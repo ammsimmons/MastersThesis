@@ -6,23 +6,25 @@
 #' Goal: Simulate data given parameters, calculate cor, 
 #' then return cor
 #'  
-#' @param family Family of distributions
-#' @param cor Correlation to simulate
-#' @return A list of results
+#' @param n number of samples in dataset
+#' @param r Correlation to simulate
+#' @param mu_x
+#' @param mu_y
+#' @param sd_x
+#' @param sd_y description
+#' @return sample corrleation
 #' @example run_simulation(param_list)
 #' 
 #' 
 #' 
 #' For use in Master's Thesis
 #' Aaron Simmons
-#' 
-source("gen_data.r")
+#' University of Kansas
+source("correlations/gen_data.r")
 
- run_one <- function(n, r, mu_x = 0, mu_y = 0, sd_x = 1, sd_y = 1){
-  cat("\n--- Simulation Parameters ---\n")
-  cat(sprintf("Iterations: %i \n", n))
-  #cat(sprintf("Family Distribution: %s \n",family))
-  cat(sprintf("Correlation value: %1.2f \n", r))
+ run_one <- function(mu_x,mu_y,sd_x, sd_y,r,n,iter){
+  
+   cat(mu_x, mu_y, sd_x, sd_y, r, n, sep = " ")
   # Input validation for the correlation coefficient
   if (r < -1 || r > 1) {
     stop("Correlation coefficient 'r' must be between -1 and 1.")
@@ -68,3 +70,8 @@ colnames(simulated_df) <- c("x1", "y1")
 res<- stats::cor(simulated_df$x1, simulated_df$y1) 
   return(res)
  }
+
+
+run_one_set <- function(..., iter = 1) {
+  purrr::map_dbl(.x = seq_len(iter), .f = run_one, ...)
+}

@@ -13,6 +13,7 @@
 #' 
 #' For use in Master's Thesis
 #' Aaron Simmons
+#' University of Kansas
 #' 
 sim_data <- function(n, mu, cov_matrix){
   simulated_data <- MASS::mvrnorm(
