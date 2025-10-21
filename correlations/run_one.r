@@ -1,8 +1,11 @@
 #' Simulating correlations
 #' @description
-#' This function receives instructions to simulate correlations
+#' This function receives instructions to simulate one iteration 
+#' of the correlation simulation exercrise
+#' 
+#' Goal: Simulate data given parameters, calculate cor, 
+#' then return cor
 #'  
-#' @param iter Number of simulation iterations
 #' @param family Family of distributions
 #' @param cor Correlation to simulate
 #' @return A list of results
@@ -12,7 +15,10 @@
 #' 
 #' For use in Master's Thesis
 #' Aaron Simmons
-run_simulation <- function(n, r, mu_x = 0, mu_y = 0, sd_x = 1, sd_y = 1){
+#' 
+source("gen_data.r")
+
+ run_one <- function(n, r, mu_x = 0, mu_y = 0, sd_x = 1, sd_y = 1){
   cat("\n--- Simulation Parameters ---\n")
   cat(sprintf("Iterations: %i \n", n))
   #cat(sprintf("Family Distribution: %s \n",family))
@@ -42,30 +48,23 @@ run_simulation <- function(n, r, mu_x = 0, mu_y = 0, sd_x = 1, sd_y = 1){
   # 4. Generate the data using a multivariate normal distribution.
   # The mvrnorm function from the MASS package does this for us.
   # It takes the number of samples (n), the means, and the covariance matrix.
-  simulated_data <- mvrnorm(
+  simulated_data <- MASS::mvrnorm(
     n = n,
     mu = mean_vector,
     Sigma = covariance_matrix
   )
   
+# 4.5 Something here to transform the marginal distributions of MVrnorm 
+# if desired 
+   
   # 5. Convert the resulting matrix to a data frame for easier use.
   simulated_df <- as.data.frame(simulated_data)
   
-
-
   # 6. Set the column names for clarity.
 colnames(simulated_df) <- c("x1", "y1")
   # Return the final data frame
 
-#obtain correlations 
-res<- cor(simulated_df$x, simulated_df$y) 
+  #obtain correlation for one simulation  
+res<- stats::cor(simulated_df$x1, simulated_df$y1) 
   return(res)
-}
-
-
-# # Set the parameters for our simulation
-# num_samples <- 1000
-# target_correlation <- 0.50
-# 
-# # Generate the dataset using the function
-# my_data <- run_simulation(n = num_samples, r = target_correlation)
+ }
