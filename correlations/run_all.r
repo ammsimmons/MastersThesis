@@ -22,8 +22,10 @@ source("correlations/run_one.r")
 
 run_all <- function(iter, P){
 
-  cat("\n--- Simulation Parameters ---\n")
-  cat(sprintf("Iterations: %i \n", iter))
+  #print(P)
+  #print(paths)
+  #cat("\n--- Simulation Parameters ---\n")
+  #cat(sprintf("Iterations: %i \n", iter))
   #cat(sprintf("Family Distribution: %s \n",family))
   #cat(sprintf("Correlation value: %1.2f \n", r))
 
@@ -33,12 +35,14 @@ run_all <- function(iter, P){
 
   #increase parameter by iteration amount
   #multi_param <- map(P,rep,iter)
+  #  res <- purrr::pmap(P, \(.x) run_one_set(.x, iter=iter) |> readr::write_csv(y))
 
   #run simulations
-  res <- purrr::pmap(P, run_one_set, iter = iter)
+  #res<- purrr::pmap(P, run_one_cond, iter =iter)
+  purrr::pwalk(P, run_one_cond, iter =iter)
 
-  return(res)
-    
+
+
+ 
   }
-
 
