@@ -20,7 +20,7 @@
 source("correlations/run_one.r")
 #sim_P[[]]
 
-run_all <- function(iter, P){
+run_all <- function(iter, P,dir){
 
   #print(P)
   #print(paths)
@@ -39,7 +39,7 @@ run_all <- function(iter, P){
 
   #run simulations
   #res<- purrr::pmap(P, run_one_cond, iter =iter)
-  purrr::pwalk(P, run_one_cond, iter =iter)
+  purrr::pwalk(P, run_one_cond, iter =iter, dir = dir)
 
 
 

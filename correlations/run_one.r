@@ -22,13 +22,13 @@
 #' University of Kansas
 source("correlations/gen_data.r")
 
- run_one <- function(mu_x,sd_x,mu_y,sd_y,r,n,fname,iter){
+ run_one <- function(mu_x,sd_x,mu_y,sd_y,r,n,...){
   
-  print(iter) 
+  #print(iter) 
    
    #write out conditions 
   #conds <- c(mu_x,sd_x,mu_y,sd_y,r)
-  conds <- sprintf("%.2f,%.2f,%.2f,%.2f,%.2f", mu_x,sd_x,mu_y,sd_y,r)
+  
   
    #cat(mu_x, mu_y, sd_x, sd_y, r, n, sep = " ")
   # Input validation for the correlation coefficient
@@ -74,17 +74,9 @@ source("correlations/gen_data.r")
 
   #obtain correlation for one simulation  
   cor_result <- stats::cor(simulated_df$x1, simulated_df$y1)
-  #res <- as.data.frame(unlist(cor_result))
 
-  #res <- list(cor_result,paths)
-  #print(cor_result)
-   
-  #write_csv(res,file = fname)
-  res <- list(
-    cor_result,fname, conds
-  )
 
-  return(res)
+  return(cor_result)
    
 
    
@@ -93,17 +85,16 @@ source("correlations/gen_data.r")
 
 run_one_cond <- function(..., iter = 1) {
    #,mu_y,sd_x,sd_y,r,n,path
-  res <- purrr::map(.x = seq_len(iter), .f = run_one, ...)
-  
-  # index results
-  dat <- map_dbl(res,1)
-  path <- unique(map_chr(res,2))
-  condition <-map_chr(res,3)
- 
+  #print(fname)
+  res <- purrr::map_dbl(.x = seq_len(iter), .f = run_one, ...)
+  print(res)
+  args <- list(...)
+  conds <- with(args, sprintf("%.2f_%.2f_%.2f_%.2f_%.2f.csv", mu_x,sd_x,mu_y,sd_y,r))
+
 
 
   #output & write
-  out <- tibble(estimate = dat, condition = condition)
-  write_csv(out,file =path)
+  out <- tibble(estimate = res)
+  write_csv(out,file = file.path(args$dir,conds))
   
 }
