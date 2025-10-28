@@ -39,7 +39,10 @@ run_all <- function(iter, P,dir){
 
   #run simulations
   #res<- purrr::pmap(P, run_one_cond, iter =iter)
-  purrr::pwalk(P, run_one_cond, iter =iter, dir = dir)
+  furrr::future_pwalk(P, run_one_cond, iter =iter, 
+    dir = dir, .progress = TRUE,
+  .options = furrr::furrr_options(seed = TRUE))
+  #disable the error 
 
 
 

@@ -44,11 +44,16 @@ dir <- "correlations/data"
 iter <- 10000 # number of iterations per simulation 
 
 #progressr
+
+#analysis script: 
+#coverage, mean absolute error, mean error (bias)
+#draw_i/o 
+
 # Note, iter*conditions = total number of simulations 
 # e.g., 10 iter * (3 x 3 x 3) = 270 simulations with 10 simulations per list
 # length(estim_r) is number of lists within estim_r (or blocks of simulations)
 # sum(lengths(estim_r)) is number of simulations total
-
+plan(multisession, workers=6)
 estim_r <- run_all(iter, P_list, dir)
 
 
