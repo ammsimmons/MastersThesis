@@ -74,9 +74,29 @@ source("correlations/gen_data.r")
 
   #obtain correlation for one simulation  
   cor_result <- stats::cor(simulated_df$x1, simulated_df$y1)
+   
+  #obtain least biased estimate of SE(r) using Gnambs (2023)
+   
+  se_cor <- (1-cor_result^2)/ (sqrt(n-3))
+   
+  #obtain CI of simulation
+  cor <- stats::cor.test(simulated_df$x1, simulated_df$y1)
+  CI <- cor$conf.int 
+  
+  # is the population parameter in CI? 
+  lower_bound <- CI[1]
+  upper_bound <- CI[2]
+   
+  is_in <- (r >= lower_bound) & (r <= upper_bound)
+  if (is_in==TRUE){
+    CI_check = 1
+  } else{
+    CI_check = 0 
+  }
+  res<- data.frame(cor = cor_result,se = se_cor,CI = CI_check)
 
 
-  return(cor_result)
+  return(res)
    
 
    
@@ -86,15 +106,26 @@ source("correlations/gen_data.r")
 run_one_cond <- function(..., iter = 1) {
    #,mu_y,sd_x,sd_y,r,n,path
   #print(fname)
-  res <- purrr::map_dbl(.x = seq_len(iter), .f = run_one, ...)
+  res <- purrr::map(.x = seq_len(iter), .f = run_one, ...)
   print(res)
   args <- list(...)
   conds <- with(args, sprintf("%.2f_%.2f_%.2f_%.2f_%.2f.csv", mu_x,sd_x,mu_y,sd_y,r))
 
 
 
-  #output & write
-  out <- tibble(estimate = res)
-  write_csv(out,file = file.path(args$dir,conds))
+#  df_long <- as.data.frame(res) %>%
+#   pivot_longer(
+#     cols = starts_with(c("cor","se","ci")), # You can also use: starts_with("cor") | starts_with("se")
+#     names_to = c(".value", "group"),
+#     names_pattern = "([a-z]+)\\.?(\\d*)"
+#   )
+
+  # #output & write
+  # out <- tibble(
+  #   estimate = fin[1],
+  #   se = fin[2],
+  #   CI = fin[3]
+  # )
+  write_csv(bind_rows(res),file = file.path(args$dir,conds))
   
 }

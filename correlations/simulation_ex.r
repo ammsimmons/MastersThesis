@@ -30,12 +30,6 @@ P_list<-as.list(P)
 # File Management 
 ####################################
 fs:::dir_create("correlations/data") #doesn't overwrite if exists
-#ncond <- nrow(P)
-#paths <- as.vector(str_glue("correlations/data/r_C{seq_len(ncond)}.csv"))
-#path_list <- map(seq_len(length(P_list)), \(.x) paths)
-#P_list$fname <- paths
-
-#P_list$paths <- paths
 
 dir <- "correlations/data"
 #####################################
@@ -53,7 +47,7 @@ iter <- 10000 # number of iterations per simulation
 # e.g., 10 iter * (3 x 3 x 3) = 270 simulations with 10 simulations per list
 # length(estim_r) is number of lists within estim_r (or blocks of simulations)
 # sum(lengths(estim_r)) is number of simulations total
-plan(multisession, workers=6)
+future::plan(multisession, workers=6)
 estim_r <- run_all(iter, P_list, dir)
 
 
