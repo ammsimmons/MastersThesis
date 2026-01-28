@@ -13,8 +13,13 @@
 #' ratio = 5; rater variance is 5x the residual variance (high rater variance/bias)
 #' @return variances
 #' @example get_variances(0.90,1,.5)
+#' 
+#' 
 
-get_variances <- function(target_icc, fixed_obj_var = 1, rater_resid_ratio) {
+
+##################
+
+get_data_ORE <- function(target_icc, fixed_obj_var = 1, rater_resid_ratio) {
 
   #error check on ICC value 
     if(target_icc >= 1 | target_icc <=0) {
@@ -39,5 +44,4 @@ get_variances <- function(target_icc, fixed_obj_var = 1, rater_resid_ratio) {
   
   return(out)
 }
-
 
