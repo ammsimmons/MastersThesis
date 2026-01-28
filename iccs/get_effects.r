@@ -27,8 +27,6 @@
 generate_data_ORE <- function(n_raters,n_objects,
   target_icc, fixed_obj_var, rater_resid_ratio){
 
-  
-  
   # Obtain variances 
   sigma_sqr <- get_data_ORE(target_icc, fixed_obj_var, rater_resid_ratio)
   
