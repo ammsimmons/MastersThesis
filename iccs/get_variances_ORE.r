@@ -29,18 +29,25 @@ get_data_ORE <- function(target_icc, fixed_obj_var = 1, rater_resid_ratio) {
   #calculate noise(combined rater and residual variance)
   # TODO: CHANGE RATIO to OBJECT/RATER VARIANCE
 
-  total_noise <- fixed_obj_var * ((1/target_icc) - 1) 
+ # total_noise <- fixed_obj_var * ((1/target_icc) - 1) 
+  
+  #total_var <- (target_icc/(1-target_icc)) + 1
+
+  #rho = sig2_obj/ (sig2_obj + sig2_rater + 1)
+  #sig2_obj = (rho * (sig2_rater+1)) / (1-rho)
+
+  var_object = (target_icc * (rater_resid_ratio + 1))/ (1-target_icc)
   
   #obtain rater variance as a function of ratio  
-  var_residual <- total_noise / (1 + rater_resid_ratio)
+ # var_residual <- total_noise / (1 + rater_resid_ratio)
 
-  var_rater <- total_noise - var_residual
+ # var_rater <- total_noise - var_residual
 
   #return variances 
   out <- list(
-    var_object = fixed_obj_var, 
-    var_rater = var_rater, 
-    var_residual = var_residual)
+    var_object = var_object, 
+    var_rater = rater_resid_ratio, 
+    var_residual = 1)
   
   return(out)
 }
