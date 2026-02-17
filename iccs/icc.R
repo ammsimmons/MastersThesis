@@ -239,6 +239,7 @@ calc_icc <- function(.data,
     k <- length(unique(.data[[rater]]))
   }
 
+  
   # Calculate the harmonic mean of the number of raters per subject
   khat <- lapply(srm, calc_khat)
 
@@ -265,6 +266,7 @@ calc_icc <- function(.data,
          "LME" = {
            # Construct mixed-effects formula
            formula <- create_parse(.data, subject, rater, scores, v)
+           
           
            model_fit <- lme4::lmer(formula = formula,
                              data = .data,
@@ -308,17 +310,17 @@ calc_icc <- function(.data,
             
              
               iccs <- cbind(
-                vs / (vs + vr + vsr),
-                vs / (vs + (vr + vsr) / k),
-                vs / (vs + (vr + vsr) / khat),
-                vs / (vs + vsr),
-                vs / (vs + (vr )/ k),
-                vs / (vs + Q*vr + vsr/khat)
-           )
-           icc_names <- c(
-             "ICC(A,1)", "ICC(A,k)", "ICC(A,khat)",
-             "ICC(C,1)", "ICC(C,k)", "ICC(Q,khat)"
-           )
+                vs / (vs + vr + vsr))
+                # vs / (vs + (vr + vsr) / k),
+                # vs / (vs + (vr + vsr) / khat),
+                # vs / (vs + vsr),
+                # vs / (vs + (vr )/ k),
+                # vs / (vs + Q*vr + vsr/khat)
+           
+           icc_names <- c("ICC(A,1)")
+          #    , "ICC(A,k)", "ICC(A,khat)",
+          #    "ICC(C,1)", "ICC(C,k)", "ICC(Q,khat)"
+          #  )
            colnames(iccs) <- paste(
              rep(icc_names, each = v),
              colnames(iccs),
@@ -475,7 +477,7 @@ calc_icc <- function(.data,
   #     model = fit
   #   )
   
-  out <- iccs[1] #ICC(A,1)
+  out <- iccs #ICC(A,1)
 
 
 

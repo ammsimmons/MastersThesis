@@ -78,14 +78,33 @@ run_one_binary <- function(n_raters, n_objects,target_icc, p,iter){
 
   #2) Analyze data with error
     
-    calc_icc_possibly <- purrr:::possibly(calc_icc, otherwise = NA)
-    estimate_icc <- calc_icc_possibly(dat, subject ="ObjectID", rater = "RaterID", scores = "Score",
+  calc_icc_quietly <- purrr::quietly(purrr:::possibly(calc_icc, otherwise = NA))
+  
+  estimate_icc <- calc_icc_quietly(dat, subject ="ObjectID", rater = "RaterID", scores = "Score",
      k = NULL, engine = "LME")
     
-    
-    return(estimate_icc[1])
 
-  })
+  # Stack results and error handling in nice format
+    
+  # if (length(estimate_icc$messages) == 0) { 
+  #   icc <- estimate_icc$result
+  #   tibble( 
+  #     ATE_hat = sum$coefficients["Z","Estimate"], 
+  #     SE_hat = sum$coefficients["Z","Std. Error"], 
+  #     p_value = sum$coefficients["Z", "Pr(>|t|)"] )
+  # } else {
+  #   # If lmer() errors, fall back on OLS
+  #   M_ols <- summary(lm(Yobs ~ Z, data = dat))
+  #   res <- tibble( 
+  #     ATE_hat = M_ols$coefficients["Z","Estimate"], 
+  #     SE_hat = M_ols$coefficients["Z", "Std. Error"], 
+  #     p_value = M_ols$coefficients["Z","Pr(>|t|)"] )
+  # }
+  
+  
+    return(estimate_icc)
+
+  }, stack = TRUE)
   
 
   #extract ICC and variance estimates 
@@ -95,6 +114,8 @@ run_one_binary <- function(n_raters, n_objects,target_icc, p,iter){
   # )
 
   #output result 
+  print(results)
+  return(results)
   
 }
 
@@ -121,7 +142,7 @@ run_all_binary <- function(P){
   #run simulations
   #res<- purrr::pmap(P, run_one_cond, iter =iter)
 
-  res <- furrr::future_pmap(P, run_one_binary,
+  res <- furrr::future_pmap_dfr(P, run_one_binary,
    .progress = TRUE,
   .options = furrr::furrr_options(seed = TRUE))
 

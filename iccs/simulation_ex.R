@@ -74,7 +74,8 @@ iter <- 10
 #   }
 
 
-future::plan(multisession, workers=6)
+future::plan(multisession, workers = 6)
+#future::plan(sequential)
 estim_icc <- run_all_binary(params)
 
 
