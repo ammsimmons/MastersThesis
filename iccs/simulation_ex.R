@@ -2,15 +2,6 @@
 #' @description
 #' 
 #' Goal: Run Simulations 
-#'  
-#' @param n_objects Number of objects
-#' @param n_raters Number of raters
-#' @param target_icc Target ICC (between 0-1)
-#' @param fixed_obj_var Fixed object variance value 
-#' @param rater_resid_ratio Value between [0,int]
-#' @return a tibble 
-#' @example generate_data_ORE(param_list)
-#' 
 #' 
 #' For use in Master's Thesis
 #' Aaron Simmons
@@ -18,6 +9,11 @@
 #' 
 #' 
 
+# 1. Load necessary libraries
+library(tidyverse)
+library(simhelpers)
+library(future)
+library(vardel)
 
 ###################
 #SAVE DIRECTORY
@@ -31,10 +27,9 @@ design_factors <- list(
 n_raters = c(3,12,24),
 n_objects = c(10,50,100),
 target_icc = c(0.5,0.75,0.90),
-p = c(0.5, 0.9),# for the binary case
-iter = 10
+p = c(0.5, 0.9)# for the binary case
 )
-
+iter = 2
 # params <- expand_grid( !!!design_factors) %>%
 #   mutate(
 #     SEED = 02112026 + 17 * 1:n() #set seed for each row 
@@ -74,11 +69,11 @@ iter <- 10
 #   }
 
 
-future::plan(multisession, workers = 6)
+future::plan(multicore, workers = 6)
 #future::plan(sequential)
-estim_icc <- run_all_binary(params)
+estim_icc <- vardel::run_all_binary(params, iter)
 
 
 
 
-
+#sim_results <- pmap(params_mod, Pearson_sim, reps = 1000 )

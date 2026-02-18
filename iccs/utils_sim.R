@@ -22,7 +22,11 @@
 
 # CODE ----
 
-simulate_binary <- function(n_raters,n_objects,target_icc,p,...){
+simulate_binary <- function(
+  n_raters = 100,
+  n_objects= 10,
+  target_icc = 0.5,
+  p=0.5,...){
 # 1) Set binary data hyper-parameters 
   
   fixed_obj_var <- 1  # assume using rater-residual ratio for now
@@ -120,9 +124,11 @@ run_one_binary <- function(n_raters, n_objects,target_icc, p,iter){
 }
 
 
+binary_sim <- bundle_sim(
+  f_generate = simulate_binary, 
+  f_analyze = calc_vardle_icc)
 
-
-run_all_binary <- function(P){
+run_all_binary <- function(P, iter){
 
   #print(P)
   #print(paths)
@@ -140,17 +146,27 @@ run_all_binary <- function(P){
   #  res <- purrr::pmap(P, \(.x) run_one_set(.x, iter=iter) |> readr::write_csv(y))
 
   #run simulations
-  #res<- purrr::pmap(P, run_one_cond, iter =iter)
 
-  res <- furrr::future_pmap_dfr(P, run_one_binary,
-   .progress = TRUE,
-  .options = furrr::furrr_options(seed = TRUE))
 
-  #disable the error 
-# purrr::pmap(P, run_one_binary,
-#    .progress = TRUE)
+  # res <- furrr::future_pmap_dfr(P, run_one_binary,
+  #  .progress = TRUE,
+  # .options = furrr::furrr_options(seed = TRUE))
+
+  #run simulations using {simhelpers::bundlesim}
+
+res <- furrr::future_pmap(P, binary_sim, reps=iter,
+    .progress = TRUE,
+   .options = furrr::furrr_options(seed = TRUE,
+  packages = "vardel"))
+
+
+
+
   
   return(res)
  
 }
+
+
+
 

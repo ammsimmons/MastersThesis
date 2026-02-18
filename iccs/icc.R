@@ -146,19 +146,19 @@ create_parseaov <- function(.data, subject, rater, scores, v){
 #'   results of the Bayesian generalizability study.
 #' @method calc_icc data.frame
 #' @export
-calc_icc <- function(.data,
-                     subject = "subject",
-                     rater = "rater",
-                     scores = c("score1", "score2"),
+calc_icc_old <- function(.data,
+                     subject = "ObjectID",
+                     rater = "RaterID",
+                     scores = "Score",
                      k = NULL,
                      method = ggdist::mode_qi,
                      engine = "BRMS",
                      ci = 0.95,
                      chains = 4,
                      iter = 5000,
-                     file = NULL,
+                     file = NULL
                      #varde = matrix(),
-                     ...) {
+                     ) {
 
   assertthat::assert_that(
     rlang::is_null(k) || rlang::is_integerish(k, n = 1)
@@ -487,6 +487,144 @@ calc_icc <- function(.data,
 
   out
 }
+
+
+calc_vardle_icc <- function(.data,
+  subject = "ObjectID",
+  rater = "RaterID",
+  scores = "Score",
+  k = NULL
+ # ci = 0.95
+  #varde = matrix(),
+  ){
+
+  assertthat::assert_that(
+    rlang::is_null(k) || rlang::is_integerish(k, n = 1)
+  )
+
+  # assertthat::assert_that(
+  #   rlang::is_double(ci, n = 1, finite = TRUE),
+  #   ci > 0, ci < 1
+  # )
+  # assertthat::assert_that(
+  #   rlang::is_integerish(chains, n = 1, finite = TRUE),
+  #   chains >= 1
+  # )
+
+
+  # How many score variables were provided?
+  v <- length(scores)
+
+  # Create logical subject-rater matrices
+  srm <- lapply(
+    X = scores,
+    FUN = create_srm,
+    .data = .data,
+    subject = subject,
+    rater = rater
+  )
+  names(srm) <- scores
+
+  # Count the number of raters who scored each subject
+  ks <- lapply(X = srm, FUN = rowSums)
+
+  # Count the number of subjects scored by each rater
+  nk <- lapply(X = srm, FUN = colSums)
+
+  # # Remove all subjects that had no raters
+  keep <- lapply(ks, function(x) names(x[x > 0])) |>
+    unlist() |>
+    unique()
+  .data <- .data[.data[[subject]] %in% keep, ]
+
+  # # Remove all raters that had no subjects
+  keep <- lapply(nk, function(x) names(x[x > 0])) |>
+    unlist() |>
+    unique()
+  .data <- .data[.data[[rater]] %in% keep, ]
+
+  #check design of data
+  balanced <- is_balanced(.data, subject,rater)
+  complete <- is_complete(.data, subject,rater)
+  twoway <- is_twoway(.data, subject, rater)
+
+
+  # If not specified, set k as the number of unique raters
+  if (is.null(k)) {
+    k <- length(unique(.data[[rater]]))
+  }
+
+  # Calculate the harmonic mean of the number of raters per subject
+  khat <- lapply(srm, calc_khat)
+
+  # Calculate the proportion of non-overlap for raters and subjects
+  q <- lapply(srm, calc_q)
+
+  if(twoway == FALSE){
+      q <- 1/k #since sigmaR cannot be distinguished
+    } 
+
+  # Construct mixed-effects formula
+  formula <- create_parse(.data, subject, rater, scores, v)
+  
+
+  model_fit <- lme4::lmer(formula = formula,
+                    data = .data,
+                  REML=TRUE)
+  
+  
+  if (check_convergence(model_fit)){
+    
+  
+  #  icc_est <- computeICC_random(fit, subject, k, khat, q, v)
+  #iccs_CIs <- ICC_CIs_LME(fit, subject, rater, ci, k, khat, q)
+  #obtain confidence intervals of ICCs
+    ## TODO: What if one way model fit?
+
+# In vardel, we will not calculate CIs by simulation:
+    # instead we will use ggdist() to estimate them
+   #level <- ci
+    khat <- khat$Score
+    Q <- q$Score
+    #two way random effects
+    lme_vars <- lme4::VarCorr(model_fit)
+    vs <- lme_vars[[subject]][1] #obtain object name
+
+    #get not specified random effects variances
+    ran_eff <- attr(model_fit@flist,"names")
+    ran_eff <- ran_eff[ran_eff != subject]
+    vr <- lme_vars[[ran_eff]][1]
+
+    #residual/interaction variances
+    #vsr <- (attr(lme4::VarCorr(model_fit), "sc"))^2
+    vsr <- sigma(model_fit)^2 
+
+
+  
+    #only interested in ICC(A,1)
+    iccs <- cbind(
+        vs / (vs + vr + vsr))
+    
+    icc_names <- c("ICC(A,1)")
+      
+    colnames(iccs) <- paste(
+      rep(icc_names, each = v),
+      colnames(iccs),
+      sep = "__"
+    )
+
+  } else {
+    stop("Model did not converge")
+  }
+  
+  out <- iccs #ICC(A,1)
+
+
+
+
+  out
+}
+
 
 
 # #' @method calc_icc varde_res
