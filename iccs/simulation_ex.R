@@ -29,7 +29,7 @@ n_objects = c(10,50,100),
 target_icc = c(0.5,0.75,0.90),
 p = c(0.5, 0.9)# for the binary case
 )
-iter = 2
+iter <- 1000
 # params <- expand_grid( !!!design_factors) %>%
 #   mutate(
 #     SEED = 02112026 + 17 * 1:n() #set seed for each row 
@@ -44,11 +44,11 @@ params <- expand_grid( !!!design_factors)
 # p <- PROPORTION[1]
 
 
-n_raters <- 24
-n_objects <- 100
-target_icc <- 0.5
-p <- 0.5
-iter <- 10
+# n_raters <- 24
+# n_objects <- 100
+# target_icc <- 0.5
+# p <- 0.5
+# iter <- 10
 
 # RUN BINARY SIMULATIONS (simhelper doesn't work with f_analyze )
 # Binary_sim <- bundle_sim(
@@ -68,10 +68,11 @@ iter <- 10
 
 #   }
 
-
+tictoc::tic()
 future::plan(multicore, workers = 6)
 #future::plan(sequential)
 estim_icc <- vardel::run_all_binary(params, iter)
+tictoc::toc()
 
 
 
