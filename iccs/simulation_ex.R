@@ -14,6 +14,7 @@ library(tidyverse)
 library(simhelpers)
 library(future)
 library(vardel)
+#library(assertthat)
 
 ###################
 #SAVE DIRECTORY
@@ -28,14 +29,21 @@ n_raters = c(3,12,24),
 n_objects = c(10,50,100),
 target_icc = c(0.5,0.75,0.90),
 p = c(0.5, 0.9)# for the binary case
-)
-iter <- 1000
+) 
+iter <- 10
 # params <- expand_grid( !!!design_factors) %>%
 #   mutate(
 #     SEED = 02112026 + 17 * 1:n() #set seed for each row 
 #   )
 
-params <- expand_grid( !!!design_factors)
+params <- expand_grid( !!!design_factors) |>
+    mutate(
+    seed = 02192026 + 17 * 1:n(), #set seed for each row
+    filename = paste0("iccs/data/",seed,".csv")
+  )
+
+# #index SEED
+# SEED <- params$SEED 
 
 # #one condition test
 # target_icc <- TARGET_ICCS[1]
@@ -71,10 +79,22 @@ params <- expand_grid( !!!design_factors)
 tictoc::tic()
 future::plan(multicore, workers = 6)
 #future::plan(sequential)
-estim_icc <- vardel::run_all_binary(params, iter)
+sim_results <- vardel::run_all_binary(params, iter, writeFiles=TRUE)
 tictoc::toc()
 
+# # saving results requires a new passed filename
+# params_saved <- params |>
+#   mutate(
+#     filename = paste0("iccs/data/",seed,".rds")
+#   )
 
+# saved_estim_icc <- function(..., filename = NA_character_){
+#   res <- safely(vardel::run_all_binary)(...)
+
+#   saveRDS(res$result$res, file = filename)
+   
+#   #return(res$error)
+#    }
 
 
 #sim_results <- pmap(params_mod, Pearson_sim, reps = 1000 )
