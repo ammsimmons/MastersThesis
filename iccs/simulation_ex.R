@@ -27,7 +27,7 @@ DIR <- "iccs/data"
 design_factors <- list(
 n_raters = c(3,12,24),
 n_objects = c(10,50,100),
-target_icc = c(0.5,0.75,0.90),
+target_icc = c(0.50,0.60,0.70),
 p = c(0.5, 0.9)# for the binary case
 ) 
 iter <- 10
@@ -38,8 +38,8 @@ iter <- 10
 
 params <- expand_grid( !!!design_factors) |>
     mutate(
-    seed = 02192026 + 17 * 1:n(), #set seed for each row
-    filename = paste0("iccs/data/",seed,".csv")
+    seed = 03022026 + 17 * 1:n(), #set seed for each row
+    filename = paste0("iccs/data/",seed,".rds")
   )
 
 # #index SEED
@@ -67,3 +67,4 @@ tictoc::toc()
 
 
 #sim_results <- pmap(params_mod, Pearson_sim, reps = 1000 )
+
