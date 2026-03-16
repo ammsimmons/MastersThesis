@@ -32,7 +32,7 @@ target_icc = c(0.40,0.60,0.80),
 k_category = c(3,5,7),
 e_category = c(TRUE,FALSE) # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
 ) 
-iter <- 10
+iter <- 1000
 
 
 params <- expand_grid( !!!design_factors) |>
@@ -45,7 +45,7 @@ params <- expand_grid( !!!design_factors) |>
 # run sim
 
 tictoc::tic()
-future::plan(multicore, workers = 6)
+future::plan(multisession, workers = 6)
 #future::plan(sequential)
 sim_results <- vardel::run_all_ordinal(params, iter, writeFiles=FALSE)
 tictoc::toc()
