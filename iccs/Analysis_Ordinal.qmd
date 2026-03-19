@@ -1,0 +1,156 @@
+---
+title: "Ordinal Analysis"
+author: Simmons & Girard
+date: March 18, 2026
+theme: lumen
+format:
+  html:
+    embed-resources: true
+---
+
+
+# 1. Prep Data
+
+## 1.1. Libraries
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(simhelpers)
+library(knitr)
+library(kableExtra)
+```
+
+## 1.2. Directory & Loading Data
+
+```{r}
+DIR <- "~/Documents/Github/MastersThesis/iccs/data"
+dat_nest <- readRDS(paste0(DIR,'/Ordinal_run1_full.rds'))
+#head(dat_nest) 
+
+#Kable (doesn't render?)
+# k1 <- kable(dat_nest, format = "html") %>%
+#   kable_styling(bootstrap_options = c("striped","hover")) %>%
+#   scroll_box(width = "100%", height = "200%")
+# k1 
+```
+
+## 1.3. Data Wrangling 
+```{r}
+## unnest the results' list-column  (by hand; example with "icc" column which is numeric) 
+
+# dat <- dat_nest |> 
+#   mutate(result = map(result, as_tibble)) |>
+#   unnest(result) |>
+#   mutate(
+#     icc = map_dbl(icc, \(x) pluck(x, .default= NA_real_))) #example
+
+##  unnest efficiently, let R decide the best atomic data type
+dat <- dat_nest |> 
+  mutate(result = map(result, as_tibble)) |>
+  unnest(result) |>
+  mutate(across(where(is.list), \(col) {
+    map_vec(col, \(x) if(is.null(x)) NA else x)
+  }))
+
+#set conditions as factors
+conds <- c("n_raters", "n_objects", "k_category", "e_category")
+dat <- dat |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+# Delete nested object
+rm(dat_nest)
+
+# Print
+head(dat)
+
+```
+
+<b> In the ordinal case, the parameter grid of conditions is as follows: </b>
+
+```{r}
+design_factors <- list(
+n_raters = c(3,12,24),
+n_objects = c(10,50,100),
+target_icc = c(0.40,0.60,0.80),
+k_category = c(3,5,7),
+e_category = c(TRUE,FALSE) # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
+)
+#expand grid
+params <- expand_grid( !!!design_factors) 
+design_factors
+head(params)
+```
+
+
+# 2. Performance Measures for Point Estimators
+Here, we consider measures for point estimators for each of the 162 ordinal conditions
+
+  - Bias and Standard Errors in Estimators
+
+```{r}
+bias_estimators <- dat |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    mean_icc_hat = mean(icc, na.rm = TRUE), #across 1000 iterations of simulation
+    se_icc_hat = sd(icc, na.rm = TRUE), # SD of sampling dist. is SE
+    dropped_icc = sum(is.na(icc))/sum(!is.na(icc)) *100,
+    mean_gICC_hat = mean(g_icc, na.rm = TRUE),#across 1000 iterations of simulation
+    se_gICC_hat = sd(g_icc, na.rm = TRUE), #SD of sampling dist. is SE
+    dropped_gICC = sum(is.na(g_icc))/sum(!is.na(g_icc)) * 100) |>
+  # let's number each condition/case for simplicity
+  ungroup()|>
+  mutate(CaseNumber = row_number()) |>
+  mutate(
+    target_icc = as.numeric(target_icc),
+    bias_icc_hat = mean_icc_hat - target_icc,
+    #compare gICC to benchmark of generalized ICC of same condition
+    #this assumes the gICC is more accurate than the ICC 
+    per_SE_icc_hat = se_icc_hat / se_gICC_hat, 
+    bias_gICC_hat = mean_gICC_hat - target_icc,
+    per_SE_gICC_hat = se_gICC_hat/se_gICC_hat)
+    
+bias_estimators
+```
+
+## 2.1 Discussion: Point Estimates Bias
+It appears that the traditional ICC (using \{lme4\}) is systematically negatively biased in all conditions from the true ICC value from -18% (Case #14) to -0.04% (Case #24) in ICC units. 
+```{r}
+range(bias_estimators$bias_icc_hat)
+rbind(bias_estimators[14,], #-18.6
+      bias_estimators[24,]) #-0.04$ 
+```
+
+It appears that the generalized ICC (using \{ordinal\}) is biased from -7.01% to -1.44% (in ICC units), but note that these are in cases when there is only 3 raters! 
+
+```{r}
+range(bias_estimators$bias_gICC_hat)
+rbind(bias_estimators[1,], #-18.6
+      bias_estimators[48,]) #-0.04$ 
+
+```
+  
+  - Root Mean Square Error of Estimators 
+  
+```{r}
+RMSE_estimators <- dat |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    bias_icc_hat = mean(icc - target_icc, na.rm = TRUE),
+    icc_SE = sd(icc, na.rm = TRUE),
+    icc_RMSE = sqrt(mean(icc-target_icc, na.rm=TRUE)^2),
+    bias_gICC_hat = mean(g_icc - target_icc, na.rm =TRUE), 
+    gICC_SE = sd(g_icc, na.rm = TRUE), 
+    gICC_RMSE = sqrt(mean(g_icc - target_icc, na.rm = TRUE)^2)
+  ) |> ungroup() |>
+  mutate(
+    CaseNumber = row_number()
+  )
+  
+RMSE_estimators
+```
+  
+
+  

@@ -1,0 +1,26 @@
+# Analyzing the Ordinal Simulation Data 
+#' @description
+#' 
+#' Goal: Run Simulations 
+#' 
+#' For use in Master's Thesis
+#' Aaron Simmons
+#' University of Kansas
+#' 
+#' 
+
+# 1. Load necessary libraries
+library(tidyverse)
+library(simhelpers)
+#library(future)
+#library(vardel)
+#library(assertthat)
+
+
+###################
+# DIRECTORY & Loading Data 
+DIR <- "iccs/data"
+dat_nest <- readRDS(paste0(DIR, '/Ordinal_run1_full.rds'))
+
+###### Data Wrangling 
+dat <- unnest(dat_nest, cols = result)
