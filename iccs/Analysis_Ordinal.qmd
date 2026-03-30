@@ -130,8 +130,9 @@ rbind(bias_estimators[1,], #-18.6
 
 ```
   
-  - Root Mean Square Error of Estimators 
-  
+## 2.2 Dicussion: Root Mean Square Error (RMSE) 
+
+First we construt our RMSE estimates (note eqivalence to bias and SE estimates in `bias_estimators`)  
 ```{r}
 RMSE_estimators <- dat |>
   #group by each condition (For ordinal, 162 total conditions)
@@ -146,11 +147,90 @@ RMSE_estimators <- dat |>
     gICC_RMSE = sqrt(mean(g_icc - target_icc, na.rm = TRUE)^2)
   ) |> ungroup() |>
   mutate(
-    CaseNumber = row_number()
-  )
+    CaseNumber = row_number())
   
 RMSE_estimators
 ```
   
 
-  
+First we consider the cases for traditional ICCs that have the lowest RMSE. We find that among the traditional ICCs, the lowest RMSE correspond to cases where the number of objects > 50. Note that even in these cases, the RMSE is >= 0.0442
+
+
+```{r}
+RMSE_estimators |> 
+  group_by(CaseNumber) |>
+  arrange(icc_RMSE)
+```
+
+
+However, when we consider the lowest RMSE values for the generalized ICC (gICC), we obtain low values across a variety of rater and object sample sizes. This suggests that the gICC performs more robustly both in terms of RMSE and condition. In addition, the gICC's RMSE values are an order of magnitude lower (<0.00) signifying lower bias and variances. 
+
+```{r}
+RMSE_estimators |> 
+  group_by(CaseNumber) |>
+  arrange(gICC_RMSE)
+```
+
+## 2.3 Discussion: MAE (Median Absolute Error)
+An alternative to RMSE is the Median Absolute Error (MAE) defined as: 
+
+$$ MAE = $\mathbb{M}$ = (\lvert(T-\theta)\lvert) $$ 
+
+```{r}
+MSE_estimators <- dat |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    bias_icc_hat = mean(icc - target_icc, na.rm = TRUE),
+    icc_MAE = median(abs(icc - target_icc), na.rm = TRUE),
+    bias_gICC_hat = mean(g_icc - target_icc, na.rm =TRUE),
+    gicc_MAE = median(abs(g_icc - target_icc),na.rm = TRUE)
+  ) |> ungroup() |>
+  mutate(
+    CaseNumber = row_number())
+
+```
+
+```{r}
+MSE_estimators |> 
+  group_by(CaseNumber) |> 
+  arrange(icc_MAE)
+```
+
+```{r}
+MSE_estimators |> 
+  group_by(CaseNumber) |> 
+  arrange(gicc_MAE)
+```
+
+# 3. Performance Measures for Variance Estimators 
+
+
+```{r}
+bias_estimators <- dat |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    var_icc_hat = var(icc, na.rm = TRUE), # var across 1000 iterations of simulation
+    se_icc_hat = sd(icc, na.rm = TRUE), # SD of sampling dist. is SE
+    dropped_icc = sum(is.na(icc))/sum(!is.na(icc)) *100,
+    mean_gICC_hat = mean(g_icc, na.rm = TRUE),#across 1000 iterations of simulation
+    se_gICC_hat = sd(g_icc, na.rm = TRUE), #SD of sampling dist. is SE
+    dropped_gICC = sum(is.na(g_icc))/sum(!is.na(g_icc)) * 100) |>
+  # let's number each condition/case for simplicity
+  ungroup()|>
+  mutate(CaseNumber = row_number()) |>
+  mutate(
+    target_icc = as.numeric(target_icc),
+    bias_icc_hat = mean_icc_hat - target_icc,
+    #compare gICC to benchmark of generalized ICC of same condition
+    #this assumes the gICC is more accurate than the ICC 
+    per_SE_icc_hat = se_icc_hat / se_gICC_hat, 
+    bias_gICC_hat = mean_gICC_hat - target_icc,
+    per_SE_gICC_hat = se_gICC_hat/se_gICC_hat)
+    
+bias_estimators
+
+```
