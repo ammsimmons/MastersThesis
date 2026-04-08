@@ -27,10 +27,10 @@ DIR <- "iccs/data"
 design_factors <- list(
 n_raters = c(3,12,24),
 n_objects = c(10,50,100),
-target_icc = c(0.40,0.60,0.80),
-k_category = c(3,5,7),
-e_category = c(TRUE,FALSE) # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
-) 
+target_icc = c(0.40,0.60,0.80))
+#k_category = c(3,5,7),
+#e_category = c(TRUE,FALSE) # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
+#) 
 iter <- 1000
 
 
@@ -46,7 +46,7 @@ params <- expand_grid( !!!design_factors) |>
 tictoc::tic()
 future::plan(multisession, workers = 6)
 #future::plan(sequential)
-sim_results <- vardel::run_ANOVA_ordinal(params, iter, writeFiles=FALSE)
+sim_results <- vardel::run_all_AOVlinear(params, iter, writeFiles=FALSE)
 tictoc::toc()
 
 

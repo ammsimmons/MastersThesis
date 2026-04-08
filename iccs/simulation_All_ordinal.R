@@ -7,7 +7,6 @@
 #' Aaron Simmons
 #' University of Kansas
 #' 
-#' 
 
 # 1. Load necessary libraries
 library(tidyverse)
@@ -21,6 +20,7 @@ library(vardel)
 #SAVE DIRECTORY
 DIR <- "iccs/data"
 
+# Simulation Experiment 1: Binary Data  -----
 
 # Paramter Grid/Design 
 
@@ -46,7 +46,7 @@ params <- expand_grid( !!!design_factors) |>
 tictoc::tic()
 future::plan(multisession, workers = 6)
 #future::plan(sequential)
-sim_results <- vardel::run_ANOVA_ordinal(params, iter, writeFiles=FALSE)
+sim_results <- vardel::run_all_ordinal(params, iter, writeFiles=FALSE)
 tictoc::toc()
 
 
