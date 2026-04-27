@@ -1,0 +1,406 @@
+---
+title: "Ordinal Analysis"
+author: Simmons & Girard
+date: March 18, 2026
+theme: lumen
+format:
+  html:
+    embed-resources: true
+---
+
+
+# 1. Prep Data
+
+## 1.1. Libraries
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(simhelpers)
+library(knitr)
+library(kableExtra)
+```
+
+## 1.2. Directory & Loading Data
+
+```{r}
+DIR <- "~/Documents/Github/MastersThesis/iccs/data"
+dat_nest <- readRDS(paste0(DIR,'/Ordinal_run1_full.rds'))
+dat_aov_res <- readRDS(paste0(DIR,'/Oridinal_AOV_full.rds'))
+
+#head(dat_nest) 
+
+#Kable (doesn't render?)
+# k1 <- kable(dat_nest, format = "html") %>%
+#   kable_styling(bootstrap_options = c("striped","hover")) %>%
+#   scroll_box(width = "100%", height = "200%")
+# k1 
+```
+
+## 1.3. Data Wrangling 
+```{r}
+## unnest the results' list-column  (by hand; example with "icc" column which is numeric) 
+
+# dat <- dat_nest |> 
+#   mutate(result = map(result, as_tibble)) |>
+#   unnest(result) |>
+#   mutate(
+#     icc = map_dbl(icc, \(x) pluck(x, .default= NA_real_))) #example
+
+##  unnest efficiently, let R decide the best atomic data type
+dat_all <- dat_nest |> 
+  mutate(result = map(result, as_tibble)) |>
+  unnest(result) |>
+  mutate(across(where(is.list), \(col) {
+    map_vec(col, \(x) if(is.null(x)) NA else x)
+  }))
+
+dat_aov <- dat_aov_res |> mutate(result = map(result, as_tibble)) |>
+  unnest(result) |>
+  mutate(across(where(is.list), \(col) {
+    map_vec(col, \(x) if(is.null(x)) NA else x)
+  }))
+
+#set conditions as factors
+conds <- c("n_raters", "n_objects", "k_category", "e_category")
+dat_all <- dat_all |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+dat_aov <- dat_aov |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+# Delete nested object
+rm(dat_nest)
+rm(dat_aov_res)
+
+# Print
+head(dat_all)
+head(dat_aov)
+
+```
+
+<b> In the ordinal case, the parameter grid of conditions is as follows: </b>
+
+```{r}
+design_factors <- list(
+n_raters = c(3,12,24),
+n_objects = c(10,50,100),
+target_icc = c(0.40,0.60,0.80),
+k_category = c(3,5,7),
+e_category = c(TRUE,FALSE) # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
+)
+#expand grid
+params <- expand_grid( !!!design_factors) 
+design_factors
+head(params)
+```
+
+
+# 2. Performance Measures for Point Estimators
+Here, we consider measures for point estimators for each of the 162 ordinal conditions
+
+  - Bias, Standard Errors (i.e., standard deviation of replication distribution), and RMSE in Estimators
+
+```{r}
+#old
+bias_estimators_all <- dat_all |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    mean_icc_hat = mean(icc, na.rm = TRUE), #across 1000 iterations of simulation
+    se_icc_hat = sd(icc, na.rm = TRUE), # SD of sampling dist. is SE
+    dropped_icc = sum(is.na(icc))/sum(!is.na(icc)) *100,
+    mean_gICC_hat = mean(g_icc, na.rm = TRUE),#across 1000 iterations of simulation
+    se_gICC_hat = sd(g_icc, na.rm = TRUE), #SD of sampling dist. is SE
+    dropped_gICC = sum(is.na(g_icc))/sum(!is.na(g_icc)) * 100) |>
+  # let's number each condition/case for simplicity
+  ungroup()|>
+  mutate(CaseNumber = row_number()) |>
+  mutate(
+    target_icc = as.numeric(target_icc),
+    bias_icc_hat = mean_icc_hat - target_icc,
+    #compare gICC to benchmark of generalized ICC of same condition
+    #this assumes the gICC is more accurate than the ICC 
+    per_SE_icc_hat = se_icc_hat / se_gICC_hat, 
+    bias_gICC_hat = mean_gICC_hat - target_icc,
+    per_SE_gICC_hat = se_gICC_hat/se_gICC_hat)
+    
+head(bias_estimators_all)
+```
+
+Here's an alternate using {simhelpers} for bias, SEs, and RMSE 
+- adds MCSE (Monte Carlo Standard Errors)
+```{r}
+bias_all <- dat_all |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(simhelpers::calc_absolute( 
+      estimates = c(icc,g_icc), true_param = c(target_icc,target_icc), 
+      criteria = c("bias","stddev","rmse")
+    )
+  )
+    
+head(bias_all)
+```
+
+
+For AOV measures
+
+```{r}
+bias_estimators_aov <- dat_aov |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    mean_icc_aov = mean(aov_icc, na.rm = TRUE), #across 1000 iterations of simulation
+    se_aov = sd(aov_icc, na.rm = TRUE), # SD of sampling dist. is SE
+    dropped_icc = sum(is.na(aov_icc))/sum(!is.na(aov_icc)) *100)|>
+  # let's number each condition/case for simplicity
+  ungroup()|>
+  mutate(CaseNumber = row_number()) |>
+  mutate(
+    target_icc = as.numeric(target_icc),
+    bias_aov = mean_icc_aov - target_icc)
+
+head(bias_estimators_aov)
+```
+
+Here's an alternate using {simhelpers} for bias, SEs, and RMSE 
+- adds MCSE (Monte Carlo Standard Errors)
+```{r}
+bias_aov <- dat_aov |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(simhelpers::calc_absolute( 
+      estimates = icc, true_param = target_icc, 
+      criteria = c("bias","stddev","rmse")
+    )
+  )
+    
+head(bias_all)
+```
+
+Join together, sharing CaseNumber
+```{r}
+bias_all <-  bias_estimators_all |> left_join(bias_estimators_aov, by = c("n_raters", "n_objects","target_icc","k_category","e_category", "CaseNumber"))
+```
+
+## 2.1 Discussion: Point Estimates Bias
+It appears that the traditional ICC (using \{lme4\}) is systematically negatively biased in all conditions from the true ICC value from -18% (Case #14) to -0.04% (Case #24) in ICC units. 
+```{r}
+# range(bias_estimators$bias_icc_hat)
+# rbind(bias_estimators[14,], #-18.6
+#       bias_estimators[24,]) #-0.04$ 
+```
+
+It appears that the generalized ICC (using \{ordinal\}) is biased from -7.01% to -1.44% (in ICC units), but note that these are in cases when there is only 3 raters! 
+
+```{r}
+# range(bias_estimators$bias_gICC_hat)
+# rbind(bias_estimators[1,], #-18.6
+#       bias_estimators[48,]) #-0.04$ 
+
+```
+  
+
+
+```{r}
+bias_long_k3_equal <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(k_category == 3 & e_category == "TRUE") 
+
+p1 <- ggplot(bias_long_k3_equal, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("K = 3, equal")
+
+bias_long_k3_notequal <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(k_category == 3 & e_category == "FALSE") 
+
+p2 <- ggplot(bias_long_k3_notequal, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("K=3, not equal")
+
+bias_long_k5_equal <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(k_category == 5 & e_category == "TRUE") 
+
+p3 <- ggplot(bias_long_k5_equal, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("K = 5, equal")
+
+bias_long_k5_notequal <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(k_category == 5 & e_category == "FALSE") 
+
+p4 <- ggplot(bias_long_k5_notequal, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("K=5, not equal")
+
+bias_long_k7_equal <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(k_category == 7 & e_category == "TRUE") 
+
+p5 <- ggplot(bias_long_k7_equal, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("K=7, equal")
+
+bias_long_k7_notequal <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(k_category == 7 & e_category == "FALSE") 
+
+p6 <- ggplot(bias_long_k7_notequal, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("K=7, not equal")
+
+
+```
+
+
+## 2.2 Dicussion: Root Mean Square Error (RMSE) 
+
+First we construt our RMSE estimates (note eqivalence to bias and SE estimates in `bias_estimators`)  
+```{r}
+RMSE_estimators <- dat |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    bias_icc_hat = mean(icc - target_icc, na.rm = TRUE),
+    icc_SE = sd(icc, na.rm = TRUE),
+    icc_RMSE = sqrt(mean(icc-target_icc, na.rm=TRUE)^2),
+    bias_gICC_hat = mean(g_icc - target_icc, na.rm =TRUE), 
+    gICC_SE = sd(g_icc, na.rm = TRUE), 
+    gICC_RMSE = sqrt(mean(g_icc - target_icc, na.rm = TRUE)^2)
+  ) |> ungroup() |>
+  mutate(
+    CaseNumber = row_number())
+  
+RMSE_estimators
+```
+  
+
+First we consider the cases for traditional ICCs that have the lowest RMSE. We find that among the traditional ICCs, the lowest RMSE correspond to cases where the number of objects > 50. Note that even in these cases, the RMSE is >= 0.0442
+
+
+```{r}
+RMSE_estimators |> 
+  group_by(CaseNumber) |>
+  arrange(icc_RMSE)
+```
+
+
+However, when we consider the lowest RMSE values for the generalized ICC (gICC), we obtain low values across a variety of rater and object sample sizes. This suggests that the gICC performs more robustly both in terms of RMSE and condition. In addition, the gICC's RMSE values are an order of magnitude lower (<0.00) signifying lower bias and variances. 
+
+```{r}
+RMSE_estimators |> 
+  group_by(CaseNumber) |>
+  arrange(gICC_RMSE)
+```
+
+## 2.3 Discussion: MAE (Median Absolute Error)
+An alternative to RMSE is the Median Absolute Error (MAE) defined as: 
+
+$$ MAE = $\mathbb{M}$ = (\lvert(T-\theta)\lvert) $$ 
+
+```{r}
+MSE_estimators <- dat |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    bias_icc_hat = mean(icc - target_icc, na.rm = TRUE),
+    icc_MAE = median(abs(icc - target_icc), na.rm = TRUE),
+    bias_gICC_hat = mean(g_icc - target_icc, na.rm =TRUE),
+    gicc_MAE = median(abs(g_icc - target_icc),na.rm = TRUE)
+  ) |> ungroup() |>
+  mutate(
+    CaseNumber = row_number())
+
+```
+
+```{r}
+MSE_estimators |> 
+  group_by(CaseNumber) |> 
+  arrange(icc_MAE)
+```
+
+```{r}
+MSE_estimators |> 
+  group_by(CaseNumber) |> 
+  arrange(gicc_MAE)
+```
+
+# 3. Performance Measures for Variance Estimators 
+
+
+```{r}
+bias_estimators <- dat |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    var_icc_hat = var(icc, na.rm = TRUE), # var across 1000 iterations of simulation
+    se_icc_hat = sd(icc, na.rm = TRUE), # SD of sampling dist. is SE
+    dropped_icc = sum(is.na(icc))/sum(!is.na(icc)) *100,
+    mean_gICC_hat = mean(g_icc, na.rm = TRUE),#across 1000 iterations of simulation
+    se_gICC_hat = sd(g_icc, na.rm = TRUE), #SD of sampling dist. is SE
+    dropped_gICC = sum(is.na(g_icc))/sum(!is.na(g_icc)) * 100) |>
+  # let's number each condition/case for simplicity
+  ungroup()|>
+  mutate(CaseNumber = row_number()) |>
+  mutate(
+    target_icc = as.numeric(target_icc),
+    bias_icc_hat = mean_icc_hat - target_icc,
+    #compare gICC to benchmark of generalized ICC of same condition
+    #this assumes the gICC is more accurate than the ICC 
+    per_SE_icc_hat = se_icc_hat / se_gICC_hat, 
+    bias_gICC_hat = mean_gICC_hat - target_icc,
+    per_SE_gICC_hat = se_gICC_hat/se_gICC_hat)
+    
+bias_estimators
+
+```

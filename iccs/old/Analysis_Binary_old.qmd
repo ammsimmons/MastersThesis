@@ -1,0 +1,219 @@
+---
+title: "Binary Analysis"
+author: Simmons & Girard
+date: April 15, 2026
+theme: lumen
+format:
+  html:
+    embed-resources: true
+---
+
+
+# 1. Prep Data
+
+## 1.1. Libraries
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(simhelpers)
+library(knitr)
+library(kableExtra)
+```
+
+## 1.2. Directory & Loading Data
+
+```{r}
+DIR <- "~/Documents/Github/MastersThesis/iccs/data"
+dat_nest <- readRDS(paste0(DIR,'/binary_results_0312_01.rds'))
+dat_aov_res <- readRDS(paste0(DIR,'/binary_aOV_full.rds')) #aov results
+
+# dat_all <-  dat_nest |> left_join(dat_aov, by = c("n_raters", "n_objects","target_icc","p","seed"))
+
+#head(dat_nest) 
+
+#Kable (doesn't render?)
+# k1 <- kable(dat_nest, format = "html") %>%
+#   kable_styling(bootstrap_options = c("striped","hover")) %>%
+#   scroll_box(width = "100%", height = "200%")
+# k1 
+
+```
+
+
+## 1.3. Data Wrangling 
+```{r}
+## unnest the results' list-column  (by hand; example with "icc" column which is numeric) 
+
+# dat <- dat_nest |> 
+#   mutate(result = map(result, as_tibble)) |>
+#   unnest(result) |>
+#   mutate(
+#     icc = map_dbl(icc, \(x) pluck(x, .default= NA_real_))) #example
+
+##  unnest efficiently, let R decide the best atomic data type
+dat_all <- dat_nest |> 
+  mutate(result = map(result, as_tibble)) |>
+  unnest(result) |>
+  #remove columns for now (unnecessary)
+  select(!c(approach, observed, expected, adjusted, boot_results, details, call)) |>
+  mutate(across(where(is.list), \(col) {
+    map_vec(col, \(x) if(is.null(x)) NA else x)
+  }))
+
+dat_aov <- dat_aov_res |>
+  mutate(result = map(result, as_tibble)) |>
+  unnest(result) |>
+  #remove columns for now (unnecessary)
+ # select(!c(approach, observed, expected, adjusted, boot_results, details, call)) |>
+  mutate(across(where(is.list), \(col) {
+    map_vec(col, \(x) if(is.null(x)) NA else x)
+  }))
+
+# dat <- dat_all |> 
+#   left_join(dat_aov, 
+#   by = c("n_raters", "n_objects","target_icc","p","seed","filename"))
+
+#set conditions as factors
+conds <- c("n_raters", "n_objects", "p")
+dat_all <- dat_all |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+dat_aov <- dat_aov |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+
+
+# Delete nested object
+rm(dat_nest)
+rm(dat_aov_res)
+
+# Print
+head(dat_all)
+head(dat_aov)
+
+```
+
+<b> In the binary case, the parameter grid of (54) conditions is as follows: </b>
+
+```{r}
+design_factors <- list(
+n_raters = c(3,12,24),
+n_objects = c(10,50,100),
+target_icc = c(0.40,0.60,0.80),
+p = c(0.5, 0.8)# for the binary case
+)  
+#expand grid
+params <- expand_grid( !!!design_factors) 
+design_factors
+head(params)
+```
+
+# 2. Performance Measures for Point Estimators
+Here, we consider measures for point estimators for each of the 54 binary conditions
+
+  - Bias and Standard Errors in Estimators
+
+For all measures 
+```{r}
+bias_estimators_all <- dat_all |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, p) |> 
+  summarize(
+    mean_icc_hat = mean(icc, na.rm = TRUE), #across 1000 iterations of simulation
+    se_icc_hat = sd(icc, na.rm = TRUE), # SD of sampling dist. is SE
+    dropped_icc = sum(is.na(icc))/sum(!is.na(icc)) *100,
+    mean_gICC_hat = mean(g_icc, na.rm = TRUE),#across 1000 iterations of simulation
+    se_gICC_hat = sd(g_icc, na.rm = TRUE), #SD of sampling dist. is SE
+    dropped_gICC = sum(is.na(g_icc))/sum(!is.na(g_icc)) * 100) |>
+  # let's number each condition/case for simplicity
+  ungroup()|>
+  mutate(CaseNumber = row_number()) |>
+  mutate(
+    target_icc = as.numeric(target_icc),
+    bias_icc = mean_icc_hat - target_icc,
+    #compare gICC to benchmark of generalized ICC of same condition
+    #this assumes the gICC is more accurate than the ICC 
+    per_SE_icc_hat = se_icc_hat / se_gICC_hat, 
+    bias_gICC = mean_gICC_hat - target_icc,
+    per_SE_gICC_hat = se_gICC_hat/se_gICC_hat)
+    
+head(bias_estimators_all)
+```
+
+For AOV measures 
+
+```{r}
+bias_estimators_aov <- dat_aov |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+  group_by(n_raters, n_objects, target_icc, p) |> 
+  summarize(
+    mean_icc_aov = mean(aov_icc, na.rm = TRUE), #across 1000 iterations of simulation
+    se_icc_aov = sd(aov_icc, na.rm = TRUE), # SD of sampling dist. is SE
+    dropped_icc = sum(is.na(aov_icc))/sum(!is.na(aov_icc)) *100) |>
+  # let's number each condition/case for simplicity
+  ungroup()|>
+  mutate(CaseNumber = row_number()) |>
+  mutate(
+    target_icc = as.numeric(target_icc),
+    bias_aov = mean_icc_aov - target_icc)
+    
+head(bias_estimators_aov)
+```
+
+Join together, sharing CaseNumber
+```{r}
+
+bias_all <-  bias_estimators_all |> left_join(bias_estimators_aov, by = c("n_raters", "n_objects","target_icc","p","CaseNumber"))
+```
+## 2.1 Discussion: Point Estimates Bias
+It appears that the traditional ICC (using \{lme4\}) is systematically negatively biased in all conditions from the true ICC value from -23% (Case #5) to -13% (Case #7) in ICC units, all when n_raters = 3! 
+```{r}
+# range(bias_estimators$bias_icc)
+# rbind(bias_estimators[5,], #-0.23
+#       bias_estimators[7,]) #-0.13 
+```
+
+It appears that the generalized ICC (using \{glmmTMB\}) is biased from -7.87% to -0.004% (in ICC units), but note that these are in cases when there is only 3 raters! 
+
+```{r}
+# range(bias_estimators$bias_gICC)
+# rbind(bias_estimators[5,], #-0.078
+#       bias_estimators[50,]) #-0.0035
+```
+
+# Plotting Bias 
+
+```{r}
+bias_long_p0.5 <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(p == 0.5)
+
+b1 <- ggplot(bias_long_p0.5, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("Binary, p =0.5")
+
+bias_long_p0.8 <- bias_all |>
+  pivot_longer(
+    cols = starts_with("bias"),
+    names_prefix = "bias_",
+    names_to = "method",
+    values_to = "bias" 
+  ) |> filter(p == 0.8)
+
+b2 <- ggplot(bias_long_p0.8, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  geom_point() + geom_line() + 
+  geom_hline( yintercept = 0 ) +
+  theme_minimal() + ggtitle("Binary, p =0.8")
+```
+
+

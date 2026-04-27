@@ -1,13 +1,14 @@
 ---
 title: "Binary Analysis"
 author: Simmons & Girard
-date: March 18, 2026
+date: April 7, 2026
 theme: lumen
 format:
   html:
     embed-resources: true
 ---
 
+THIS ANALYZES DATA PRIOR TO SIMULATION RE-RUN (Simulation Universe #2)
 
 # 1. Prep Data
 
@@ -24,6 +25,10 @@ library(kableExtra)
 ```{r}
 DIR <- "~/Documents/Github/MastersThesis/iccs/data"
 dat_nest <- readRDS(paste0(DIR,'/binary_results_0312_01.rds'))
+dat_aov_res <- readRDS(paste0(DIR,'/binary_aOV_full.rds')) #aov results
+
+# dat_all <-  dat_nest |> left_join(dat_aov, by = c("n_raters", "n_objects","target_icc","p","seed"))
+
 #head(dat_nest) 
 
 #Kable (doesn't render?)
@@ -45,7 +50,7 @@ dat_nest <- readRDS(paste0(DIR,'/binary_results_0312_01.rds'))
 #     icc = map_dbl(icc, \(x) pluck(x, .default= NA_real_))) #example
 
 ##  unnest efficiently, let R decide the best atomic data type
-dat <- dat_nest |> 
+dat_all <- dat_nest |> 
   mutate(result = map(result, as_tibble)) |>
   unnest(result) |>
   #remove columns for now (unnecessary)
@@ -54,16 +59,36 @@ dat <- dat_nest |>
     map_vec(col, \(x) if(is.null(x)) NA else x)
   }))
 
+dat_aov <- dat_aov_res |>
+  mutate(result = map(result, as_tibble)) |>
+  unnest(result) |>
+  #remove columns for now (unnecessary)
+ # select(!c(approach, observed, expected, adjusted, boot_results, details, call)) |>
+  mutate(across(where(is.list), \(col) {
+    map_vec(col, \(x) if(is.null(x)) NA else x)
+  }))
+
+# dat <- dat_all |> 
+#   left_join(dat_aov, 
+#   by = c("n_raters", "n_objects","target_icc","p","seed","filename"))
+
 #set conditions as factors
 conds <- c("n_raters", "n_objects", "p")
-dat <- dat |> 
+dat_all <- dat_all |> 
   mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+dat_aov <- dat_aov |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+
 
 # Delete nested object
 rm(dat_nest)
+rm(dat_aov_res)
 
 # Print
-head(dat)
+head(dat_all)
+head(dat_aov)
 
 ```
 
@@ -82,74 +107,202 @@ design_factors
 head(params)
 ```
 
+## 1.4 Wide to Long 
+
+Formatting data from wide to long allows easier use of {simhelpers} tidy function for simulations' performance measures. 
+
+```{r}
+# add prefixes 
+colnames(dat_all)[c(7,11)] <- paste0("pre_", colnames(dat_all)[c(7,11)])
+colnames(dat_aov)[7] <- paste0("pre_", colnames(dat_aov)[7]) 
+
+dat_all <- dat_all |>
+  pivot_longer(
+    cols = starts_with("pre_"),
+    names_to = "method",
+    names_prefix = ("pre_"),
+    values_to =  "value",
+  )
+
+dat_aov <- dat_aov |>
+  pivot_longer(
+    cols = starts_with("pre_"),
+    names_to = "method",
+    names_prefix = ("pre_"),
+    values_to =  "value",
+  )
+```
+
+
+
 # 2. Performance Measures for Point Estimators
 Here, we consider measures for point estimators for each of the 54 binary conditions
 
-  - Bias and Standard Errors in Estimators
-
+We obtain, for each condition and measure (ICC, Generalized ICC, and AOV_ICC):
+- Bias (defined as "Mean absolute error" by Oest & Girard, Miratrix & Pustejovsky)
+- Bias (defined by Muthen & Muthen)
+- Standard Errors (i.e., standard deviation of replication distribution) 
+- Root Mean Squared Error (RMSE) 
+For all measures 
 ```{r}
-bias_estimators <- dat |>
+bias_all <- dat_all |>
   #group by each condition (For ordinal, 162 total conditions)
   select(!c(seed, filename)) |>
-  group_by(n_raters, n_objects, target_icc, p) |> 
+ # group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
   summarize(
-    mean_icc_hat = mean(icc, na.rm = TRUE), #across 1000 iterations of simulation
-    se_icc_hat = sd(icc, na.rm = TRUE), # SD of sampling dist. is SE
-    dropped_icc = sum(is.na(icc))/sum(!is.na(icc)) *100,
-    mean_gICC_hat = mean(g_icc, na.rm = TRUE),#across 1000 iterations of simulation
-    se_gICC_hat = sd(g_icc, na.rm = TRUE), #SD of sampling dist. is SE
-    dropped_gICC = sum(is.na(g_icc))/sum(!is.na(g_icc)) * 100) |>
-  # let's number each condition/case for simplicity
-  ungroup()|>
-  mutate(CaseNumber = row_number()) |>
-  mutate(
-    target_icc = as.numeric(target_icc),
-    bias_icc_hat = mean_icc_hat - target_icc,
-    #compare gICC to benchmark of generalized ICC of same condition
-    #this assumes the gICC is more accurate than the ICC 
-    per_SE_icc_hat = se_icc_hat / se_gICC_hat, 
-    bias_gICC_hat = mean_gICC_hat - target_icc,
-    per_SE_gICC_hat = se_gICC_hat/se_gICC_hat)
-    
-bias_estimators
-```
-
-
-## 2.1 Discussion: Point Estimates Bias
-It appears that the traditional ICC (using \{lme4\}) is systematically negatively biased in all conditions from the true ICC value from -23% (Case #5) to -13% (Case #7) in ICC units, all when n_raters = 3! 
-```{r}
-range(bias_estimators$bias_icc_hat)
-rbind(bias_estimators[5,], #-0.23
-      bias_estimators[7,]) #-0.13 
-```
-
-It appears that the generalized ICC (using \{glmmTMB\}) is biased from -7.87% to -0.004% (in ICC units), but note that these are in cases when there is only 3 raters! 
-
-```{r}
-range(bias_estimators$bias_gICC_hat)
-rbind(bias_estimators[5,], #-0.078
-      bias_estimators[50,]) #-0.0035
-```
-
- - Root Mean Square Error of Estimators 
-  
-```{r}
-RMSE_estimators <- dat |>
-  #group by each condition (For ordinal, 162 total conditions)
-  select(!c(seed, filename)) |>
-  group_by(n_raters, n_objects, target_icc, p) |> 
-  summarize(
-    bias_icc_hat = mean(icc - target_icc, na.rm = TRUE),
-    icc_SE = sd(icc, na.rm = TRUE),
-    icc_RMSE = sqrt(mean(icc-target_icc, na.rm=TRUE)^2),
-    bias_gICC_hat = mean(g_icc - target_icc, na.rm =TRUE), 
-    gICC_SE = sd(g_icc, na.rm = TRUE), 
-    gICC_RMSE = sqrt(mean(g_icc - target_icc, na.rm = TRUE)^2)
-  ) |> ungroup() |>
-  mutate(
-    # let's number each condition/case for simplicity
-    CaseNumber = row_number()
+    simhelpers::calc_absolute( 
+      estimates = value, true_param = target_icc, 
+      criteria = c("bias","stddev","rmse")
+    ), 
+    .by = c(n_raters, n_objects, target_icc, p, method)
   )
-  
-RMSE_estimators
+    
+head(bias_all)
 ```
+
+For AOV measures 
+
+```{r}
+bias_aov <- dat_aov |>
+  #group by each condition (For ordinal, 162 total conditions)
+  select(!c(seed, filename)) |>
+ # group_by(n_raters, n_objects, target_icc, k_category, e_category) |> 
+  summarize(
+    simhelpers::calc_absolute( 
+      estimates = value, true_param = target_icc, 
+      criteria = c("bias","stddev","rmse"), 
+    ), 
+    .by = c(n_raters, n_objects, target_icc, p, method)
+  )
+    
+head(bias_aov)
+```
+
+Join together, sharing CaseNumber
+```{r}
+
+bias_full <-  bias_all |> full_join(bias_aov) 
+```
+## 2.1 Discussion: Point Estimates Bias
+Note: all graphs have corresponding Monte Carlo Standard Error confidence intervals!
+
+### 2.1.1 Bias (Mean Absolute Error)
+```{r}
+# uniform formatting
+my_geom <- list(
+  geom_point(position = position_dodge(width = 0.3)),
+  geom_line(position = position_dodge(width = 0.3)), 
+  geom_errorbar( aes( ymin = bias - 1.96*bias_mcse,
+                      ymax = bias + 1.96*bias_mcse ),
+                 position = position_dodge( width=0.3),
+                 width = 0 ), 
+  geom_hline( yintercept = 0 ),
+  theme_minimal() 
+)
+
+bias_long_p0.5 <- bias_full |>
+  filter(p ==0.5) 
+
+p1 <- ggplot(bias_long_p0.5, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  ggtitle("p=0.5") + 
+  my_geom
+
+bias_long_p0.8<- bias_full |>
+ filter(p==0.8) 
+
+p2 <- ggplot(bias_long_p0.8, aes(n_raters, bias, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+ ggtitle("p==0.8") + 
+ my_geom
+
+p1
+p2
+```
+
+### 2.1.2 Bias (Muthen & Muthen)
+- Here, if bias is less than 10% then it is good
+```{r}
+my_geom2 <- list(
+  geom_point(position = position_dodge(width = 0.3)),
+  geom_line(position = position_dodge(width = 0.3)), 
+  geom_errorbar( aes( ymin = bias2 - 1.96*bias_mcse,
+                      ymax = bias2 + 1.96*bias_mcse ),
+                 position = position_dodge( width=0.3),
+                 width = 0 ), 
+  geom_hline( yintercept = 0 ),
+  theme_minimal(), 
+  geom_hline(yintercept = -0.10, linetype='dotted', col = 'red'),
+  scale_y_continuous(labels = scales::label_percent())
+)
+
+bias_long_p0.5 <- bias_full |>
+  mutate(bias2 = bias/target_icc) |>
+  filter(p==0.5) 
+
+p3 <- ggplot(bias_long_p0.5, aes(n_raters, bias2, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  ggtitle("p=0.5") + 
+  my_geom2
+
+bias_long_p0.8 <- bias_full |>
+  mutate(bias2 = bias/target_icc) |>
+ filter(p==0.8) 
+
+p4 <- ggplot(bias_long_p0.8, aes(n_raters, bias2, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+ ggtitle("p==0.5") + 
+ my_geom2
+
+
+p3
+p4
+```
+
+## 2.2 Discussion: Root Mean Square Error (RMSE)
+```{r}
+# uniform formatting
+my_geom <- list(
+  geom_point(position = position_dodge(width = 0.3)),
+  geom_line(position = position_dodge(width = 0.3)), 
+  geom_errorbar( aes( ymin = rmse - 1.96*rmse_mcse,
+                      ymax = rmse + 1.96*rmse_mcse ),
+                 position = position_dodge( width=0.3),
+                 width = 0 ), 
+  geom_hline( yintercept = 0 ),
+  theme_minimal() 
+)
+
+bias_long_p0.5 <- bias_full |>
+  filter(p==0.5) 
+
+p5 <- ggplot(bias_long_p0.5, aes(n_raters, rmse, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+  ggtitle("p==0.5") + 
+  my_geom
+
+bias_long_p0.8 <- bias_full |>
+ filter(p==0.8) 
+
+p6 <- ggplot(bias_long_p0.8, aes(n_raters, rmse, 
+                       col=method, pch=method, group=method ) ) +
+  facet_grid( target_icc ~ n_objects, labeller = label_both ) +
+ ggtitle("p==0.8") + 
+ my_geom
+
+
+p5
+p6
+```
+
+
+
+
+
+
+

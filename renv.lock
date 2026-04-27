@@ -6649,7 +6649,7 @@
     },
     "vardel": {
       "Package": "vardel",
-      "Version": "0.0.6.01",
+      "Version": "0.0.8.03",
       "Source": "Local",
       "Title": "The Quick ICC(A,1) Simulation Package",
       "Authors@R": "person(\"Aaron\", \"Simmons\", , \"amsimmons@ku.edu\", role = c(\"aut\", \"cre\")) person(\"Jeffrey\", \"Girard\", ,\"jmgirard@ku.edu\", role = c(\"cre\"))",
@@ -6662,10 +6662,12 @@
         "assertthat",
         "boot",
         "brms",
+        "dplyr",
         "glmmTMB",
         "lme4",
         "ordinal",
-        "simhelpers"
+        "simhelpers",
+        "tibble"
       ],
       "Author": "Jeffrey Girard [cre]",
       "Maintainer": "Jeffrey Girard <jmgirard@ku.edu>",
