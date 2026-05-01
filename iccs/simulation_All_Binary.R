@@ -60,6 +60,6 @@ filt_param <- params |> filter(condition %notin% file_numbers)
 tictoc::tic()
 future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_all_binary(params, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_binary(filt_param, iter, writeFiles=TRUE)
 tictoc::toc()
 
