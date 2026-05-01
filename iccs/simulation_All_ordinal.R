@@ -41,6 +41,7 @@ param <- expand_grid( !!!design_factors) |>
     filename = paste0("iccs/data/ordinal_",condition,"_",seed,".rds")
   )
 
+##### Selecting Conditions 
 
 # run sim (in portions)
 #params_comp1 <- param |>
@@ -49,13 +50,22 @@ param <- expand_grid( !!!design_factors) |>
 #params_comp2 <- param |> 
  # filter(condition <= 82) # for fast server 1 
 
+# Find errored conditions and rerun 
+# 1. List all .rds files in the directory
+files <- list.files(path = "~/MastersThesis/iccs/data/", pattern = "\\.rds$", full.names = FALSE)
+  
+#2. Extract the number from the middle of the filename
+# This regex looks for a sequence of digits (\d+)
+file_numbers <- as.numeric(stringr::str_extract(files, "\\d+")) 
+`%notin%` <- Negate(`%in%`)  
+filt_param <- param |> filter(condition %notin% file_numbers)
 
-
+#####################
 
 tictoc::tic()
 future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_all_ordinal(param, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_ordinal(filt_param, iter, writeFiles=TRUE)
 tictoc::toc()
 
 
