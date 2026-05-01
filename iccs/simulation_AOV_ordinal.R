@@ -44,7 +44,7 @@ params <- expand_grid( !!!design_factors) |>
 # run sim
 
 tictoc::tic()
-future::plan(multisession, workers = 6)
+future::plan(multisession, workers = 22)
 #future::plan(sequential)
 sim_results <- vardel::run_ANOVA_ordinal(params, iter, writeFiles=FALSE)
 tictoc::toc()

@@ -39,32 +39,16 @@ iter <- 1000
 params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03022026 + 17 * 1:n(), #set seed for each row
-    filename = paste0("iccs/data/",seed,".rds")
+    condition = 1:n() * 1,
+    filename = paste0("iccs/data/binary_",condition,"_",seed,".rds")
   )
 
 # #index SEED
 # SEED <- params$SEED 
 
 tictoc::tic()
-future::plan(multicore, workers = 6)
+future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_all_binary(params, iter, writeFiles=FALSE)
+sim_results <- vardel::run_all_binary(params, iter, writeFiles=TRUE)
 tictoc::toc()
-
-# # saving results requires a new passed filename
-# params_saved <- params |>
-#   mutate(
-#     filename = paste0("iccs/data/",seed,".rds")
-#   )
-
-# saved_estim_icc <- function(..., filename = NA_character_){
-#   res <- safely(vardel::run_all_binary)(...)
-
-#   saveRDS(res$result$res, file = filename)
-   
-#   #return(res$error)
-#    }
-
-
-#sim_results <- pmap(params_mod, Pearson_sim, reps = 1000 )
 
