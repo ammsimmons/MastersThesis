@@ -43,6 +43,17 @@ params <- expand_grid( !!!design_factors) |>
     filename = paste0("iccs/data/binary_",condition,"_",seed,".rds")
   )
 
+# Find errored conditions and rerun 
+# 1. List all .rds files in the directory
+files <- list.files(path = "~/MastersThesis/iccs/data/", pattern = "\\.rds$", full.names = FALSE)
+  
+#2. Extract the number from the middle of the filename
+# This regex looks for a sequence of digits (\d+)
+file_numbers <- as.numeric(stringr::str_extract(files, "\\d+")) 
+`%notin%` <- Negate(`%in%`)  
+filt_param <- params |> filter(condition %notin% file_numbers)
+
+
 # #index SEED
 # SEED <- params$SEED 
 
