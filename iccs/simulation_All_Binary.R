@@ -39,7 +39,8 @@ iter <- 1000
 params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03022026 + 17 * 1:n(), #set seed for each row
-    filename = paste0("iccs/data/",seed,".rds")
+    condition = 1:n() * 1,
+    filename = paste0("iccs/data/binary_",condition,"_",seed,".rds")
   )
 
 # #index SEED
