@@ -45,7 +45,7 @@ param <- expand_grid( !!!design_factors) |>
 
 #run sim (in portions)
 params_comp1 <- param |>
- filter(condition <= 162) # for fast server 1 
+ filter(condition > 162) # for fast server 1 
 
 # params_comp2 <- param |> 
 #  filter(condition <= 82) # for fast server 1 
