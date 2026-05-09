@@ -28,7 +28,8 @@ design_factors <- list(
 n_raters = c(3,12,24),
 n_objects = c(10,50,100),
 target_icc = c(0.40,0.60,0.80),
-p = c(0.5, 0.8)# for the binary case
+p = c(0.5, 0.8), # for the binary case
+icc_type = c(1,2,3,4)
 ) 
 iter <- 1000
 # params <- expand_grid( !!!design_factors) %>%
@@ -40,18 +41,18 @@ params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03022026 + 17 * 1:n(), #set seed for each row
     condition = 1:n() * 1,
-    filename = paste0("iccs/data/binary_",condition,"_",seed,".rds")
+    filename = paste0("iccs/data/binary_UThree_",condition,"_",seed,".rds")
   )
 
-# Find errored conditions and rerun 
-# 1. List all .rds files in the directory
-files <- list.files(path = "~/MastersThesis/iccs/data/", pattern = "\\.rds$", full.names = FALSE)
+# # Find errored conditions and rerun 
+# # 1. List all .rds files in the directory
+# files <- list.files(path = "~/MastersThesis/iccs/data/", pattern = "\\.rds$", full.names = FALSE)
   
-#2. Extract the number from the middle of the filename
-# This regex looks for a sequence of digits (\d+)
-file_numbers <- as.numeric(stringr::str_extract(files, "\\d+")) 
-`%notin%` <- Negate(`%in%`)  
-filt_param <- params |> filter(condition %notin% file_numbers)
+# #2. Extract the number from the middle of the filename
+# # This regex looks for a sequence of digits (\d+)
+# file_numbers <- as.numeric(stringr::str_extract(files, "\\d+")) 
+# `%notin%` <- Negate(`%in%`)  
+# filt_param <- params |> filter(condition %notin% file_numbers)
 
 
 # #index SEED
@@ -60,6 +61,6 @@ filt_param <- params |> filter(condition %notin% file_numbers)
 tictoc::tic()
 future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_all_binary(filt_param, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_binary(params, iter, writeFiles=TRUE)
 tictoc::toc()
 
