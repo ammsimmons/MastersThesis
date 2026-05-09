@@ -38,7 +38,7 @@ param <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03122026 + 17 * 1:n(), #set seed for each row,
     condition = 1:n() * 1,
-    filename = paste0("iccs/data/ordinal_",condition,"_",seed,".rds")
+    filename = paste0("iccs/data/ordinal_onlyglmmtmb_",condition,"_",seed,".rds")
   )
 
 ##### Selecting Conditions 
@@ -52,20 +52,20 @@ param <- expand_grid( !!!design_factors) |>
 
 # Find errored conditions and rerun 
 # 1. List all .rds files in the directory
-files <- list.files(path = "~/MastersThesis/iccs/data/", pattern = "\\.rds$", full.names = FALSE)
+# files <- list.files(path = "~/MastersThesis/iccs/data/", pattern = "\\.rds$", full.names = FALSE)
   
-#2. Extract the number from the middle of the filename
-# This regex looks for a sequence of digits (\d+)
-file_numbers <- as.numeric(stringr::str_extract(files, "\\d+")) 
-`%notin%` <- Negate(`%in%`)  
-filt_param <- param |> filter(condition %notin% file_numbers)
+# #2. Extract the number from the middle of the filename
+# # This regex looks for a sequence of digits (\d+)
+# file_numbers <- as.numeric(stringr::str_extract(files, "\\d+")) 
+# `%notin%` <- Negate(`%in%`)  
+# filt_param <- param |> filter(condition %notin% file_numbers)
 
 #####################
 
 tictoc::tic()
 future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_all_ordinal(filt_param, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_ordinal_onlyglmmtmb(param, iter, writeFiles=TRUE)
 tictoc::toc()
 
 
