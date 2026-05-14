@@ -23,6 +23,7 @@ library(knitr)
 library(kableExtra)
 library(gt)
 library(paletteer)
+library(ggpubr)
 # ---
 ```
 
@@ -228,7 +229,8 @@ errors |>
     target_columns = everything(),
     method = "factor",
     palette = "RColorBrewer::Blues"
-  )
+  ) #|>
+  #gtsave("failure_rates_ordinal.png")
 ```
 
 # 2.2 Negative ICC rates 
@@ -704,3 +706,153 @@ Relative bias (calibration) of v  = V_bar (the average variance of across replic
 
 # 4. Comparison to CAA
 
+
+```{r}
+dat_avg <- dat_caa |>
+  #some NA (4) in g-ICC(C,k) and negative aov_iccs |>
+  filter(estimate >= 0 )|>
+  filter(method != "icc") |> # Makes it easier to assess LMM since so similar 
+  summarize(
+    mean_estimate = mean(estimate), 
+    .by = c(n_raters, n_objects, target_icc, icc, k_category, e_category, icc_type, condition, method)
+  )
+rm(dat_caa) # save RAM space
+```
+
+Plot functions
+
+```{r}
+plot_hyper_parameter_correlation_fixed <- function(data, target_factor, caa_metric = "kappa_adj") {
+  
+  # 1. Clean labeling
+  clean_label <- case_when(
+    target_factor == "n_raters"   ~ "Number of Raters",
+    target_factor == "n_objects"  ~ "Number of Objects",
+    target_factor == "target_icc" ~ "Target ICC Value",
+    target_factor == "k_category" ~ "Number of Categories (K)",
+    TRUE                          ~ target_factor
+  )
+
+  # 2. SEPARATE and JOIN to ensure correct pairing
+  # This prevents the "horizontal line" issue caused by messy pivots
+  
+  caa_df <- data %>%
+    filter(method == caa_metric) %>%
+    rename(baseline_val = mean_estimate) %>%
+    select(-method)
+
+  icc_df <- data %>%
+    filter(method != caa_metric) %>% # Assumes other metrics are your ICCs
+    rename(icc_val = mean_estimate) %>%
+    select(-method,icc)
+
+  # Join them on all simulation factors to ensure 1:1 matching
+  cor_data <- inner_join(caa_df, icc_df, 
+                         by = c("n_raters", "n_objects", "target_icc", "k_category", "e_category", "icc_type","condition"))
+
+  # 3. Dynamic Plotting
+  ggplot(cor_data, aes(x = baseline_val, y = icc_val, color = icc_type)) +
+    geom_point(alpha = 0.4, size = 1.2) +
+    geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+    stat_cor(aes(label = ..r.label..), method = "pearson", label.y.npc = "top") +
+    # Use any_of for the dynamic faceting
+    facet_grid(rows = vars(icc_type), cols = vars(any_of(target_factor)), labeller = label_both) +
+    labs(
+      title = paste("Correlation:", baseline_metric, "vs. ICC Types"),
+      subtitle = paste("Faceted by", clean_label),
+      x = paste("Average", baseline_metric),
+      y = "Average ICC Estimate",
+      color = "Estimation Method"
+    ) +
+    theme_bw()
+}
+```
+
+```{r}
+
+plot_multi_facet_correlation <- function(data, 
+                                         col_factor, 
+                                         row_factor = "icc_type", 
+                                         caa_metric = "kappa_adj") {
+  
+  # 1. Clean labels for the columns and rows
+  get_label <- function(x) {
+    case_when(
+      x == "n_raters"   ~ "Number of Raters",
+      x == "n_objects"  ~ "Number of Objects",
+      x == "target_icc" ~ "Target ICC Value",
+      x == "k_category" ~ "Number of Categories (K)",
+      x == "icc_type"   ~ "ICC Metric Type",
+      TRUE              ~ x
+    )
+  }
+
+  # 2. The Join Algorithm (Ensures Kappa and ICC are paired correctly)
+  caa_df <- data %>%
+    filter(method == caa_metric) %>%
+    rename(baseline_val = mean_estimate) %>%
+    select(-method)
+
+  icc_df <- data %>%
+    filter(method != caa_metric) %>% # Assumes other metrics are your ICCs
+    filter(method == "g_icc") %>%
+    rename(icc_val = mean_estimate) %>%
+    select(-method,icc)
+
+  cor_data <- inner_join(caa_df, icc_df, 
+                         by = c("n_raters", "n_objects", "target_icc", "k_category", "e_category", "icc_type","condition")) %>%
+    # Optional: Integrated Outlier Filter (adjust threshold as needed)
+    filter(abs(icc_val) <= 2, abs(baseline_val) <= 2) #do this for now
+
+  # 3. Plotting with Dynamic Faceting
+  ggplot(cor_data, aes(x = baseline_val, y = icc_val)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+    stat_cor(aes(label = ..r.label..), method = "pearson", size = 3) +
+    # Dynamic Grid: Rows are typically ICC types, Columns are your target factor
+    facet_grid(rows = vars(.data[[row_factor]]), 
+               cols = vars(.data[[col_factor]]), 
+               labeller = label_both) +
+    labs(
+      title = paste("Correlation Analysis:", caa_metric, "vs. G-ICC"),
+      subtitle = paste("Faceted by", get_label(row_factor), "and", get_label(col_factor)),
+      x = paste("Average", caa_metric),
+      y = "Average ICC Estimate"
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom") + 
+    geom_abline(intercept = 0, slope = 1, color = "orange", linetype = "dashed")
+}
+```
+
+
+Create plot
+
+
+```{r}
+# Define the factors you want to loop through
+factors_to_analyze <- c("n_raters", "n_objects", "k_category")
+
+# Generate the plots
+hyper_cor_plots <- map(set_names(factors_to_analyze), ~ {
+  plot_hyper_parameter_correlation(
+    data = dat_avg, 
+    target_factor = .x,
+    baseline_metric = "kappa_adj",
+    icc_estimate = "g_icc"
+  )
+})
+
+
+
+# Save the architecture
+# output_dir <- "icc_kappa_correlations"
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# iwalk(hyper_cor_plots, function(p, factor_name) {
+#   ggsave(
+#     file.path(output_dir, paste0("hyper_corr_", factor_name, ".png")), 
+#     plot = p, width = 16, height = 12, dpi = 300
+#   )
+# })
+```
