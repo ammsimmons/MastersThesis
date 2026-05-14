@@ -1,0 +1,18 @@
+/*-- scss:rules --*/
+h1, h2, h3, h4, h5, h6 {
+  color: #e0e0e0;
+  background-color: #2C3E50
+}
+
+.header-s1 {
+    color: white; 
+    background-color: #2C3E50
+}
+
+.header-block {
+  background-color: #2C3E50;
+  padding: 10px 15px;
+  margin-bottom: 15px;      /* Creates space BEFORE the paragraph starts */
+  border-left: 6px solid #243b53;
+  display: block; 
+}

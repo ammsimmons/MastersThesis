@@ -1,0 +1,706 @@
+---
+title: "Ordinal Analysis (Universe #3)"
+author: Simmons & Girard
+date: May 10, 2026
+theme: flatly
+format:
+  html:
+    embed-resources: true
+title-block-banner: true
+css: custom_theme.css
+---
+
+# 1.  Setup 
+
+Libraries 
+```{r, warning=FALSE, message=FALSE}
+#| code-fold: true
+
+# Load Packages  
+library(tidyverse)
+library(simhelpers)
+library(knitr)
+library(kableExtra)
+library(gt)
+library(paletteer)
+# ---
+```
+
+{gt} styling template
+```{r}
+#| code-fold: true
+#{gt} Theme --
+my_gt_theme <- function(gt_object){
+  gt_object |>
+  opt_table_font(
+    font = list(
+      google_font(name = "Arial"), # Preferred
+      "serif")) |>
+  tab_options(
+    table.border.top.style = "none",
+    table.border.bottom.style = "solid",
+    table.border.bottom.width = px(2),
+    column_labels.border.top.style = "solid",
+    column_labels.border.top.width = px(2),
+    column_labels.border.bottom.style = "solid",
+    column_labels.border.bottom.width = px(1),
+    table_body.border.bottom.style = "solid",
+    table_body.border.bottom.width = px(2)
+  ) 
+}
+# ----
+```
+
+# 2. Data Wrangling 
+
+## 2.1 Directory & Loading Data
+
+```{r}
+DIR <-  "~/Documents/Github/MastersThesis/iccs/data/universe_3/"
+```
+
+```{r}
+#| code-fold: true
+
+nest_rds_files <- function(data_df, filename_col, directory_path) {
+  # 1. Ensure the directory path ends with a slash for file path construction
+  dir <- ifelse(grepl("/$", directory_path), directory_path, paste0(directory_path, "/"))
+  
+  # 2. Create the new nested column
+  # We use sym() to handle the column name if passed as a string
+  result_df <- data_df %>%
+    mutate(result = map(!!sym(filename_col), function(fname) {
+      file_path <- paste0(dir, fname)
+      
+      # Check if file exists to avoid crashing the whole loop
+      if (file.exists(file_path)) {
+        return(readRDS(file_path))
+      } else {
+        warning(paste("File not found:", file_path))
+        return(NULL)
+      }
+    }))
+  
+  return(result_df)
+}
+```
+
+## 2.2 Data Wrangling 
+<b> In the ordinal case, the parameter grid of conditions is as follows and add each file to its condition </b>
+
+The complete simulations required a post-hoc re-run including the use of {glmmTMB} alongside of {lme4} for linear mixed model fitting. This was obtained in `dat_nest2`
+
+```{r}
+#| code-fold: true 
+
+# Paramter Grid
+design_factors <- list(
+n_raters = c(3,12,24),
+n_objects = c(10,50,100),
+target_icc = c(0.40,0.60,0.80),
+k_category = c(3,5,7),
+e_category = c(TRUE,FALSE), 
+# 1 = equal category prevalence, #0 = unequal linear decay prevalence 
+icc_type = c(1,2,3,4)
+)
+# Expand grid and
+# Join each data file to its condition 
+params <- expand_grid( !!!design_factors) |>
+    mutate(
+    seed = 03122026 + 17 * 1:n(), #set seed for each row,
+    condition = 1:n() * 1,
+    filename = paste0("ordinal_UThree_",condition,"_",seed,".rds"))
+
+dat_nest <- nest_rds_files(params, "filename", DIR)
+
+params2 <- params |> 
+  select(-filename) |>
+  mutate(filename = paste0(
+    "ordinal_onlyglmmtmb_",condition,"_",seed,".rds"))
+  
+
+ODIR <- "~/Documents/Github/MastersThesis/iccs/data/"
+#glmmtmb linear fits only 
+dat_nest2 <- nest_rds_files(params2, "filename", ODIR)
+
+#head(params)
+#head(params2)
+```
+
+Here, I  unnested the entire simulation sets to obtain the full data 
+```{r}
+#| code-fold: true
+
+
+dat <- dat_nest |> unnest(result)
+dat2 <- dat_nest2 |> unnest(result)
+
+# Delete nested object
+rm(dat_nest) # no longer neaded 
+rm(dat_nest2 ) #no longer needed
+
+# Set each condition of the simulations as factors 
+conds <- c("n_raters", "n_objects", "k_category", "icc", "e_category", "icc_type", "condition", "method")
+dat <- dat |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+dat2 <- dat2 |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+```
+
+Critically, datasets were subsetted so that each g_icc() is matched with its corresponding data generating variance (DGP) hyper-parameters
+
+```{r}
+#| code-fold: true
+
+# for point-estimate analyses
+dat_full <- bind_rows(dat, dat2) |>
+  select(-seed, -filename) |>
+  filter(
+    (icc_type == 1 & icc == "ICC(A,1)") |
+    (icc_type == 2 & icc == "ICC(A,k)") |
+    (icc_type == 3 & icc == "ICC(C,1)") |
+    (icc_type == 4 & icc == "ICC(C,k)"))
+
+# for CAA analysis 
+dat_caa <- bind_rows(dat,dat) |> 
+  select(-seed, -filename) |> 
+  bind_rows(dat_full) # match ICCs with correct DGP 
+
+# Clean up
+rm(dat, dat2)
+```
+
+# 2. Descriptives 
+
+# 2.1 Simulation Error Rates
+First, let's check how many conditions obtained errors. Here, I considered a simulation to <i>fail</i> whenever there was a "message", "warning", or "error" associated with any one model fit in {lm} for ANOVA, and {lme4}, {glmmTMB}, and {ordinal} for LMMs. 
+
+Here: Errors are conditional on ICC type and method
+```{r}
+errors <- dat_full |>
+  mutate(
+    across(.cols = c("message","warning","error"), .fns = as.logical)) |> 
+  mutate( is_invalid = message | warning | error) |>
+  summarise(
+    total_trials = n(),
+    invalid_trials = sum(is_invalid, na.rm = TRUE),
+    percent_error = mean(is_invalid, na.rm = TRUE) * 100,
+    .by = c(method,icc)
+  ) |>
+  arrange(match(method, c("icc","icc_glmmtmb", "g_icc","aov_icc"))
+  ) |>
+  arrange(icc) |> 
+  mutate(method = fct_recode(method, 
+  "LMM {lme4}" = "icc",
+  "LMM {glmmtmb}" = "icc_glmmtmb",
+  "GLMM {ordinal}" = "g_icc", 
+  "ANOVA {lm}" = "aov_icc", 
+  ))
+
+```
+
+Print {gt} Table 
+```{r}
+errors |>
+  gt() |>
+  my_gt_theme() |>
+  tab_header(
+    title = "Simulation Failure Rates (Ordinal Data)",
+    subtitle = "Comparing Across Method and ICC-Type"
+  ) |>
+  # Format the percentage column (adds the % sign and rounds to 1 decimal)
+  fmt_percent(
+    columns = percent_error,
+    scale_values = FALSE,
+    decimals = 2
+  ) |>
+  # Make the column names look professional
+  cols_label(
+    method = "Method",
+    icc = "ICC Type",
+    total_trials = "Total Trials",
+    invalid_trials = "Invalid Trials",
+    percent_error = "Percent Error"
+  ) |>
+  data_color(
+    column = icc,
+    target_columns = everything(),
+    method = "factor",
+    palette = "RColorBrewer::Blues"
+  )
+```
+
+# 2.2 Negative ICC rates 
+Negative ICCs conditional on ICC type and method 
+
+```{r}
+negative_summary <- dat_full |>
+  summarise(
+    total_trials = n(),
+    negative_count = sum(estimate < 0, na.rm = TRUE),
+    .by = c(method,icc), 
+    negative_pct = mean(estimate < 0, na.rm = TRUE)
+  ) |>
+  arrange(match(method, c("icc","icc_glmmtmb", "g_icc","aov_icc"))
+  ) |>
+  arrange(icc) |> 
+  mutate(method = fct_recode(method, 
+  "LMM {lme4}" = "icc",
+  "LMM {glmmtmb}" = "icc_glmmtmb",
+  "GLMM {ordinal}" = "g_icc", 
+  "ANOVA {lm}" = "aov_icc", 
+  ))
+
+negative_summary |>
+  gt() |>
+  my_gt_theme() |>
+  tab_header(
+    title = "Negative ICC Rates (Ordinal Data)",
+    subtitle = "Comparing Across Method and ICC-Type"
+  ) |>
+  # Format the percentage column (adds the % sign and rounds to 1 decimal)
+  fmt_percent(
+    columns = negative_pct,
+    scale_values = FALSE, 
+    decimals = 2
+  ) |>
+  # Make the column names look professional
+  cols_label(
+    method = "Method",
+    icc = "ICC Type",
+    total_trials = "Total Trials",
+    negative_count = "Trials Negative ICC",
+    negative_pct = "Percent Negative"
+  ) |>
+  data_color(
+    column = icc,
+    target_columns = everything(),
+    method = "factor",
+    palette = "RColorBrewer::Blues"
+  )
+```
+
+# 3. Performance Measures for Point Estimators
+Here, we consider performance measures for point estimators for each of the 162 ordinal conditions. 
+
+We obtain, for each condition and measure (ICC, Generalized ICC, and AOV_ICC):
+- Bias (defined as "Mean absolute error" by Oest & Girard, Miratrix & Pustejovsky)
+- Bias (defined by Muthen & Muthen)
+- Standard Errors (i.e., standard deviation of replication distribution) 
+- Root Mean Squared Error (RMSE) 
+```{r}
+
+bias <- dat_full |>
+  #some NA (4) in g-ICC(C,k) and negative aov_iccs |>
+  filter(estimate >= 0 )|>
+  filter(method != "icc") |> # Makes it easier to assess LMM since so similar 
+  summarize(
+    simhelpers::calc_absolute( 
+      estimates = estimate, true_param = target_icc, 
+      criteria = c("bias","stddev","rmse")
+    ), 
+    .by = c(n_raters, n_objects, target_icc, icc, k_category, e_category, icc_type, condition, method)
+  ) |>
+  mutate(bias2 = bias/target_icc) |> #Muthen&Muthen
+  mutate(bias2_mcse = bias_mcse/target_icc) |> #Muthen&Muthen
+  mutate(Method = fct_recode(method, 
+    "LMM {lme4}" = "icc",
+    "LMM {glmmtmb}" = "icc_glmmtmb",
+    "GLMM {ordinal}" = "g_icc", 
+    "ANOVA {lm}" = "aov_icc", )
+  ) |> 
+  mutate(Objects = n_objects) |> 
+  mutate(`Target ICC` = target_icc) |>
+  mutate(`Category Equality` = e_category)
+
+  
+  
+```
+
+Plot functions 
+```{r}
+#| code-fold: true
+
+my_geom <- list(
+  geom_point(position = position_dodge(width = 0.3)),
+  geom_line(position = position_dodge(width = 0.3)), 
+  geom_errorbar( aes( ymin = bias - 1.96*bias_mcse,
+                      ymax = bias + 1.96*bias_mcse ),
+                 position = position_dodge( width=0.3),
+                 width = 0 ), 
+  geom_hline( yintercept = 0 ),
+  theme_minimal() 
+)
+
+my_geom2 <- list(
+  geom_point(position = position_dodge(width = 0.3)),
+  geom_line(position = position_dodge(width = 0.3)), 
+  geom_errorbar( aes( ymin = bias2 - 1.96*bias2_mcse,
+                      ymax = bias2 + 1.96*bias2_mcse ),
+                 position = position_dodge( width=0.3),
+                 width = 0 ), 
+  geom_hline( yintercept = 0),
+  geom_hline(yintercept = -0.10, color = "red", linetype = "dashed" ),
+  geom_hline(yintercept = 0.10, color = "red", linetype = "dashed" ),
+  theme_minimal() 
+)
+
+my_geom_rmse <- list(
+  geom_point(position = position_dodge(width = 0.3)),
+  geom_line(position = position_dodge(width = 0.3)), 
+  geom_errorbar( aes( ymin = rmse - 1.96*rmse_mcse,
+                      ymax = rmse + 1.96*rmse_mcse ),
+                 position = position_dodge( width=0.3),
+                 width = 0 ), 
+  geom_hline( yintercept = 0),
+  theme_minimal() 
+)
+
+labs_by_type <- list(
+labs(y = "Bias (MAE)"), 
+labs(y = "Bias (Muthén & Muthén)"), 
+labs(y = "Mean RMSE") 
+)
+
+
+
+plot_simulation_bias <- function(data, x_var, y_var, col_var, facet_row, facet_col, my_geoms, plot_labs, title = "Simulation Bias") {
+  
+  ggplot(data, aes(x = {{x_var}}, 
+                   y = {{y_var}}, 
+                   col = {{col_var}}, 
+                   pch = {{col_var}}, 
+                   group = {{col_var}})) +
+    # facet_grid handles the two factors dynamically
+    facet_grid(rows = vars({{facet_row}}), 
+               cols = vars({{facet_col}}), 
+               labeller = label_both) +
+    # your custom geom layer
+    my_geoms + 
+    # labs(title = title,
+    #      x = substitute(x_var),
+    #      y = substitute(y_var),
+    #      color = substitute(col_var),
+    #      shape = substitute(col_var)) +
+    labs(title = title,
+         x = plot_labs["n_raters"],
+         y = plot_labs["bias"],
+         color = substitute(col_var),
+         shape = substitute(col_var)) +
+    theme_bw() # Or your preferred base theme
+}
+
+plot_labels <- c(
+  n_raters = "Raters", 
+  n_objects = "Objects", 
+  target_icc = "Target ICC",
+  n_category = "Category",
+  bias = "Bias (MAE)" 
+)
+
+plot_aggregated_facet <- function(data, var_name, bias_type, lab_type) {
+  
+  # 1. Human-readable labels
+  clean_label <- case_when(
+    var_name == "n_raters"   ~ "Number of Raters",
+    var_name == "n_objects"  ~ "Number of Objects",
+    var_name == "target_icc" ~ "Target ICC Value",
+    var_name == "k_category" ~ "Number of Categories (K)",
+    var_name == "e_category" ~ "Equality of Categories",
+    TRUE                     ~ var_name
+  )
+  
+  # 2. Aggregate including 'icc' in the grouping
+  agg_data <- data |>
+    group_by(icc, .data[[var_name]], Method) |>
+    summarise(mean_bias = mean({{bias_type}}, na.rm = TRUE),
+              sd_bias = sd({{bias_type}}, na.rm = TRUE),
+              .groups = "drop")
+  
+  pd <- position_dodge(width = 0.5)
+
+  # 3. Plot with Faceting by ICC
+  p <- ggplot(agg_data, 
+    aes(x = factor(.data[[var_name]]), y = mean_bias, 
+                       group = Method, color = Method)) +
+    geom_line(linewidth = 1, position =pd) +
+    geom_point(size = 2, position = pd) + 
+    geom_hline(yintercept = 0, 
+      color="lemonchiffon4", 
+      linetype="dashed", size=0.5) + 
+    geom_errorbar(
+        aes(ymin = mean_bias - sd_bias, ymax = mean_bias + sd_bias),width = 0.2, alpha = 0.4, position = pd) +
+    # Facet by ICC type to see all metrics at once
+    facet_wrap(~icc, labeller = label_value) + 
+    labs(title = paste("Aggregated Effect of", clean_label),
+         x = clean_label, 
+         y = "Mean Bias (±1 SD)") +
+    theme_bw() +
+    theme(legend.position = "bottom") +
+    labs_by_type[lab_type]  
+  
+  if (lab_type == 2){ # add threshold line if Muthen & Muthen Bias
+  p <- p + geom_hline(yintercept = c(-0.10,0.10), 
+             linetype = "dashed", color = "red")
+  
+  }
+  return(p)
+}
+
+
+```
+
+
+## 3.1 Bias (Mean Absolute Error)
+
+### MAE Individual plots 
+```{r}
+mae_plots <- bias |>
+  group_by(icc, k_category, e_category) |>
+  group_split() |>
+  # 2. Map over the split data
+  map(~ {
+    # Extract values for a dynamic and descriptive title
+    icc_val <- unique(.x$icc)
+    k_val   <- unique(.x$k_category)
+    e_val   <- unique(.x$e_category)
+    
+    # Generate the plot using your generalized function
+    plot_simulation_bias(
+      data = .x,
+      x_var = n_raters,
+      y_var = bias,
+      col_var = Method,
+      facet_row = `Target ICC`,
+      facet_col = Objects,
+      my_geoms = my_geom,
+      plot_labs = plot_labels,
+      title = paste0("ICC Type: ", icc_val, " | K = ", k_val, ", Equal = ", e_val)
+    )
+  })
+
+mae_plots
+```
+
+### MAE Boxplots 
+Boxplots
+
+```{r}
+plot_icc_boxplots <- function(data, icc_label) {
+  ggplot(data, aes(x = factor(k_category), y = bias, fill = Method)) +
+    # Draw boxplots for each method side-by-side
+    geom_boxplot(outliers = FALSE, outlier.size = 0.5, alpha = 0.7, outlier.shape = NA) +
+    # Grid by Equality and Number of Objects
+    facet_grid(`Category Equality` ~ Objects, labeller = label_both) +
+    labs(
+      title = paste("Bias Analysis for ICC Type:", icc_label),
+      x = "Number of Categories (K)",
+      y = "Bias (MAE)",
+      fill = "Estimation Method"
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+}
+
+mae_boxplots <- bias %>%
+  group_by(icc) %>%
+  group_split() %>%
+  map(~ {
+    icc_val <- unique(.x$icc)
+    
+    plot_icc_boxplots(
+      data = .x, 
+      icc_label = icc_val
+    )
+  })
+```
+Save boxplots
+```{r}
+# # Walk through the plots and save them in organized subdirectories
+# walk(all_boxplots, ~ {
+#   # Pull the metadata from the individual plot's data
+#   this_data <- .x$data
+#   icc_dir <- as.character(unique(this_data$icc))
+  
+#   # Create directory if it doesn't exist
+#   if (!dir.exists(icc_dir)) dir.create(icc_dir)
+  
+#   # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
+#   #                     "_E", unique(this_data$e_category), ".png")
+#     file_name <- paste0(icc_dir, "/Boxplot_", unique(this_data$icc), 
+#                        ".png")
+  
+#   ggsave(file_name, plot = .x, width = 12, height = 9)
+# })
+
+```
+
+### MAE Aggregated plots 
+
+Average over factors
+```{r}
+ factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category")
+
+#  plot
+ mae_aggregate_plots <- map(set_names(factors_to_test), 
+ ~ {plot_aggregated_facet(bias, .x, bias, 1)
+ })
+ mae_aggregate_plots
+```
+
+Save aggregated plots 
+
+```{r}
+
+# # Define the output directory
+# output_dir <- "~/Documents/Github/MastersThesis/iccs/aggregated_plots"
+
+# # Create the folder if it doesn't already exist
+# if (!dir.exists(output_dir)) {
+#   dir.create(output_dir)
+# }
+
+# # 4. Save each plot using iwalk (iteration with names)
+# iwalk(final_agg_plots, function(p, factor_name) {
+  
+#   # Construct a clean filename
+#   file_name <- file.path(output_dir, paste0("summary_", factor_name, ".png"))
+  
+#   # Save with high resolution (300 DPI) for clarity
+#   ggsave(
+#     filename = file_name, 
+#     plot = p, 
+#     width = 12,    # Wider to accommodate multiple ICC facets
+#     height = 8, 
+#     units = "in",
+#     dpi = 300
+#   )
+  
+#   message(paste("Saved:", file_name))
+# })
+```
+
+## 3.2 Bias (Muthen & Muthen)
+- Here, if bias is less than 10% then it is good
+
+### Muthen & Muthen Individual Plots 
+```{r}
+
+mm_labs <- c(
+  n_raters = "Raters", 
+  n_objects = "Objects", 
+  target_icc = "Target ICC",
+  n_category = "Category",
+  bias = "Bias (Muthén & Muthén)" 
+)
+
+mm_plots <- bias |>
+  group_by(icc, k_category, e_category) |>
+  group_split() |>
+  # 2. Map over the split data
+  map(~ {
+    # Extract values for a dynamic and descriptive title
+    icc_val <- unique(.x$icc)
+    k_val   <- unique(.x$k_category)
+    e_val   <- unique(.x$e_category)
+    
+    # Generate the plot using your generalized function
+    plot_simulation_bias(
+      data = .x,
+      x_var = n_raters,
+      y_var = bias2,
+      col_var = Method,
+      facet_row = `Target ICC`,
+      facet_col = Objects,
+      my_geoms = my_geom2,
+      plot_labs = mm_labs, 
+      title = paste0("ICC Type: ", icc_val, " | K = ", k_val, ", Equal = ", e_val)
+    )
+  })
+
+
+mm_plots
+```
+
+### Muthen & Muthen Aggregated plots 
+
+```{r}
+ factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category")
+
+# # Generate a list of faceted plots
+ mm_aggregate_plots <- map(set_names(factors_to_test), 
+ ~ {plot_aggregated_facet(bias, .x, bias2, 2)
+ })
+
+ mm_aggregate_plots
+
+```
+
+## 3.3 Precision: Standard Error  (SD of the simulation distribution)  (Skip for now)
+We can assess the precision of the generalized ICC compared to the traditional ICC and AOV based ICC by comparing the standard deviation of the simulation distribution
+
+## 3.4 Root Mean Square Error (RMSE)
+
+### RMSE Individual Plots 
+```{r}
+rmse_labs <- c(
+  n_raters = "Raters", 
+  n_objects = "Objects", 
+  target_icc = "Target ICC",
+  n_category = "Category",
+  bias = "RMSE" 
+)
+
+rmse_plots <- bias |>
+  group_by(icc, k_category, e_category) |>
+  group_split() |>
+  # 2. Map over the split data
+  map(~ {
+    # Extract values for a dynamic and descriptive title
+    icc_val <- unique(.x$icc)
+    k_val   <- unique(.x$k_category)
+    e_val   <- unique(.x$e_category)
+    
+    # Generate the plot using your generalized function
+    plot_simulation_bias(
+      data = .x,
+      x_var = n_raters,
+      y_var = rmse,
+      col_var = Method,
+      facet_row = `Target ICC`,
+      facet_col = Objects,
+      my_geoms = my_geom_rmse,
+      plot_labs = rmse_labs, 
+      title = paste0("ICC Type: ", icc_val, " | K = ", k_val, ", Equal = ", e_val)
+    )
+  })
+
+
+rmse_plots
+```
+
+### RMSE Aggregated plots 
+Aggregated RMSE plots 
+```{r}
+ factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category")
+
+# # Generate a list of faceted plots
+ rmse_aggregate_plots <- map(set_names(factors_to_test), 
+ ~ {plot_aggregated_facet(bias, .x, rmse, 3)
+ })
+
+ rmse_aggregate_plots
+```
+
+# 3.4 Performance Measures for Standard Errors (Skip for now)
+- Standard Errors (i.e., standard deviation of replication distribution) 
+
+"A first order question is whether our estimated standard errors are calibrated, meaning whether they are the right size, on average. For this question we will examine the bias of squared standard error estimators. A second order question is whether our estimated standard errors are stable, meaning that they do not vary too much from one dataset to another. For this question we evaluate estimated standard errors in terms of effective degrees of freedom or the standard error (or RMSE) of the standard error."
+
+## 3.5 Calibration (Skip for now)
+
+Relative bias (calibration) of v  = V_bar (the average variance of across replications, of the variance/SE for each replication utilizing a variance estimator of ICC ) / standard devaition( of T across all replications!)
+
+# 4. Comparison to CAA
+
