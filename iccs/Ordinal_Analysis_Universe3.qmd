@@ -748,53 +748,6 @@ rm(dat_caa) # save RAM space
 Plot functions
 
 ```{r}
-# plot_hyper_parameter_correlation<- function(data, target_factor, caa_metric = "kappa_adj") {
-  
-#   # 1. Clean labeling
-#   clean_label <- case_when(
-#     target_factor == "n_raters"   ~ "Number of Raters",
-#     target_factor == "n_objects"  ~ "Number of Objects",
-#     target_factor == "target_icc" ~ "Target ICC Value",
-#     target_factor == "k_category" ~ "Number of Categories (K)",
-#     TRUE                          ~ target_factor
-#   )
-
-#   # 2. SEPARATE and JOIN to ensure correct pairing
-#   # This prevents the "horizontal line" issue caused by messy pivots
-  
-#   caa_df <- data %>%
-#     filter(method == caa_metric) %>%
-#     rename(baseline_val = mean_estimate) %>%
-#     select(-method)
-
-#   icc_df <- data %>%
-#     filter(method != caa_metric) %>% # Assumes other metrics are your ICCs
-#     rename(icc_val = mean_estimate) %>%
-#     select(-method,icc)
-
-#   # Join them on all simulation factors to ensure 1:1 matching
-#   cor_data <- inner_join(caa_df, icc_df, 
-#                          by = c("n_raters", "n_objects", "target_icc", "k_category", "e_category", "icc_type","condition"))
-
-#   # 3. Dynamic Plotting
-#   ggplot(cor_data, aes(x = baseline_val, y = icc_val, color = icc_type)) +
-#     geom_point(alpha = 0.4, size = 1.2) +
-#     geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
-#     stat_cor(aes(label = ..r.label..), method = "pearson", label.y.npc = "top") +
-#     # Use any_of for the dynamic faceting
-#     facet_grid(rows = vars(icc_type), cols = vars(any_of(target_factor)), labeller = label_both) +
-#     labs(
-#       title = paste("Correlation:", baseline_metric, "vs. ICC Types"),
-#       subtitle = paste("Faceted by", clean_label),
-#       x = paste("Average", baseline_metric),
-#       y = "Average ICC Estimate",
-#       color = "Estimation Method"
-#     ) +
-#     theme_bw()
-# }
-```
-
-```{r}
 
 plot_multi_facet_correlation <- function(data, 
                                          col_factor, 
