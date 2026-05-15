@@ -164,12 +164,37 @@ dat_full <- bind_rows(dat, dat2) |>
     (icc_type == 4 & icc == "ICC(C,k)"))
 
 # for CAA analysis 
-dat_caa <- bind_rows(dat,dat) |> 
+dat_caa <- bind_rows(dat,dat2) |> 
   select(-seed, -filename) |> 
+  filter(is.na(icc)) |> #select only caa measures 
   bind_rows(dat_full) # match ICCs with correct DGP 
 
 # Clean up
 rm(dat, dat2)
+
+# REDO AOV ICCs due to issue in ICC(A,k) - Jeff found on May 14th
+
+# aov_fixer <- function(khat, n_objects, MSr, MSo, MSe, type) {
+
+#     case_when( 
+#       as.character(type) == "ICC(A,1)" ~ (MSo - MSe) / (MSo + ((khat - 1) * MSe) + ((khat / n_objects) * (MSr - MSe))),
+#       as.character(type) == "ICC(A,k)" ~ (MSo - MSe) / (MSo + ((MSr - MSe) / n_objects)),
+#       as.character(type) == "ICC(C,1)" ~ (MSo - MSe) / (MSo + ((khat - 1) * MSe)), 
+#       as.character(type) == "ICC(C,k)" ~ (MSo - MSe) / MSo)
+# }
+
+# dat_full_aov <- dat_full |> filter(method == "aov_icc")
+# dat_full_not_aov <- dat_full |> filter(method != "aov_icc")
+
+# rm(dat_full) # save space
+
+
+# dat_full_aov <- dat_full_aov |> 
+#   mutate(estimate = aov_fixer(n_raters, n_objects, vr, vs, vsr, icc))
+
+# dat_full <- bind_rows(dat_full_not_aov, dat_full_aov)
+
+
 ```
 
 # 2. Descriptives 
@@ -280,7 +305,8 @@ negative_summary |>
     target_columns = everything(),
     method = "factor",
     palette = "RColorBrewer::Blues"
-  )
+  ) |> 
+  gtsave("negative_ICC_rates_ordinal.png")
 ```
 
 # 3. Performance Measures for Point Estimators
@@ -722,50 +748,50 @@ rm(dat_caa) # save RAM space
 Plot functions
 
 ```{r}
-plot_hyper_parameter_correlation_fixed <- function(data, target_factor, caa_metric = "kappa_adj") {
+# plot_hyper_parameter_correlation<- function(data, target_factor, caa_metric = "kappa_adj") {
   
-  # 1. Clean labeling
-  clean_label <- case_when(
-    target_factor == "n_raters"   ~ "Number of Raters",
-    target_factor == "n_objects"  ~ "Number of Objects",
-    target_factor == "target_icc" ~ "Target ICC Value",
-    target_factor == "k_category" ~ "Number of Categories (K)",
-    TRUE                          ~ target_factor
-  )
+#   # 1. Clean labeling
+#   clean_label <- case_when(
+#     target_factor == "n_raters"   ~ "Number of Raters",
+#     target_factor == "n_objects"  ~ "Number of Objects",
+#     target_factor == "target_icc" ~ "Target ICC Value",
+#     target_factor == "k_category" ~ "Number of Categories (K)",
+#     TRUE                          ~ target_factor
+#   )
 
-  # 2. SEPARATE and JOIN to ensure correct pairing
-  # This prevents the "horizontal line" issue caused by messy pivots
+#   # 2. SEPARATE and JOIN to ensure correct pairing
+#   # This prevents the "horizontal line" issue caused by messy pivots
   
-  caa_df <- data %>%
-    filter(method == caa_metric) %>%
-    rename(baseline_val = mean_estimate) %>%
-    select(-method)
+#   caa_df <- data %>%
+#     filter(method == caa_metric) %>%
+#     rename(baseline_val = mean_estimate) %>%
+#     select(-method)
 
-  icc_df <- data %>%
-    filter(method != caa_metric) %>% # Assumes other metrics are your ICCs
-    rename(icc_val = mean_estimate) %>%
-    select(-method,icc)
+#   icc_df <- data %>%
+#     filter(method != caa_metric) %>% # Assumes other metrics are your ICCs
+#     rename(icc_val = mean_estimate) %>%
+#     select(-method,icc)
 
-  # Join them on all simulation factors to ensure 1:1 matching
-  cor_data <- inner_join(caa_df, icc_df, 
-                         by = c("n_raters", "n_objects", "target_icc", "k_category", "e_category", "icc_type","condition"))
+#   # Join them on all simulation factors to ensure 1:1 matching
+#   cor_data <- inner_join(caa_df, icc_df, 
+#                          by = c("n_raters", "n_objects", "target_icc", "k_category", "e_category", "icc_type","condition"))
 
-  # 3. Dynamic Plotting
-  ggplot(cor_data, aes(x = baseline_val, y = icc_val, color = icc_type)) +
-    geom_point(alpha = 0.4, size = 1.2) +
-    geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
-    stat_cor(aes(label = ..r.label..), method = "pearson", label.y.npc = "top") +
-    # Use any_of for the dynamic faceting
-    facet_grid(rows = vars(icc_type), cols = vars(any_of(target_factor)), labeller = label_both) +
-    labs(
-      title = paste("Correlation:", baseline_metric, "vs. ICC Types"),
-      subtitle = paste("Faceted by", clean_label),
-      x = paste("Average", baseline_metric),
-      y = "Average ICC Estimate",
-      color = "Estimation Method"
-    ) +
-    theme_bw()
-}
+#   # 3. Dynamic Plotting
+#   ggplot(cor_data, aes(x = baseline_val, y = icc_val, color = icc_type)) +
+#     geom_point(alpha = 0.4, size = 1.2) +
+#     geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+#     stat_cor(aes(label = ..r.label..), method = "pearson", label.y.npc = "top") +
+#     # Use any_of for the dynamic faceting
+#     facet_grid(rows = vars(icc_type), cols = vars(any_of(target_factor)), labeller = label_both) +
+#     labs(
+#       title = paste("Correlation:", baseline_metric, "vs. ICC Types"),
+#       subtitle = paste("Faceted by", clean_label),
+#       x = paste("Average", baseline_metric),
+#       y = "Average ICC Estimate",
+#       color = "Estimation Method"
+#     ) +
+#     theme_bw()
+# }
 ```
 
 ```{r}
@@ -835,11 +861,9 @@ factors_to_analyze <- c("n_raters", "n_objects", "k_category")
 
 # Generate the plots
 hyper_cor_plots <- map(set_names(factors_to_analyze), ~ {
-  plot_hyper_parameter_correlation(
+  plot_multi_facet_correlation(
     data = dat_avg, 
-    target_factor = .x,
-    baseline_metric = "kappa_adj",
-    icc_estimate = "g_icc"
+    col_factor = .x,
   )
 })
 
