@@ -29,8 +29,8 @@ n_raters = c(3,12,24),
 n_objects = c(10,50,100),
 target_icc = c(0.40,0.60,0.80),
 k_category = c(3,5,7),
-e_category = c(TRUE,FALSE) # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
-) 
+e_category = c(TRUE,FALSE), # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
+icc_type = c(1,2,3,4)) 
 iter <- 1000
 
 
@@ -38,7 +38,7 @@ params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03122026 + 17 * 1:n(), #set seed for each row
     condition = 1:n() * 1,
-    filename = paste0("iccs/data/ordinal_aov_",condition,"_",seed,".rds")
+    filename = paste0("iccs/data/ordinal_Uthree5_aov_",condition,"_",seed,".rds")
   )
 
 
