@@ -41,7 +41,7 @@ params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03022026 + 17 * 1:n(), #set seed for each row
     condition = 1:n() * 1,
-    filename = paste0("iccs/data/binary_UThree_",condition,"_",seed,".rds")
+    filename = paste0("iccs/data/binary_UThree5_",condition,"_",seed,".rds")
   )
 
 # # Find errored conditions and rerun 
