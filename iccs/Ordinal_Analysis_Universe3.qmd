@@ -322,7 +322,7 @@ We obtain, for each condition and measure (ICC, Generalized ICC, and AOV_ICC):
 bias <- dat_full |>
   #some NA (4) in g-ICC(C,k) and negative aov_iccs |>
   filter(estimate >= 0 )|>
-  filter(method != "icc") |> # Makes it easier to assess LMM since so similar 
+  filter(method != "icc") |> # Makes it easier to assess LMM-ICCs since so similar 
   summarize(
     simhelpers::calc_absolute( 
       estimates = estimate, true_param = target_icc, 
