@@ -20,6 +20,7 @@ library(simhelpers)
 library(knitr)
 library(kableExtra)
 library(gt)
+library(ggpubr)
 ```
 
 {gt} styling 
@@ -288,6 +289,29 @@ bias <- dat_full |>
   mutate(Objects = n_objects) |> 
   mutate(`Target ICC` = target_icc) |>
   mutate(`Category Equality` = p)
+
+bias_no_p <- dat_full |>
+  #mutate(estimate = na_if(estimate,NaN)) |>
+  #some NA (4) in g-ICC(C,k) and negative aov_iccs |>
+  filter(estimate >= 0 )|>
+  filter(method != "icc") |> # Makes it easier to assess LMM-ICCs since so similar
+  summarize(
+    simhelpers::calc_absolute( 
+      estimates = estimate, true_param = target_icc, 
+      criteria = c("bias","stddev","rmse")
+    ), 
+    .by = c(n_raters, n_objects, target_icc, icc_type, method, icc)
+  ) |> 
+  mutate(bias2 = bias/target_icc) |> #Muthen&Muthen
+  mutate(bias2_mcse = bias_mcse/target_icc) |> #Muthen&Muthen
+  mutate(Method = fct_recode(method, 
+    "LMM {lme4}" = "icc",
+    "LMM {glmmtmb}" = "icc_glmmtmb",
+    "GLMM {ordinal}" = "g_icc", 
+    "ANOVA {lm}" = "aov_icc", )
+  ) |>
+  mutate(Objects = n_objects) |> 
+  mutate(`Target ICC` = target_icc)
 ```
 
 
@@ -299,13 +323,28 @@ Plot functions
 
 my_geom <- list(
   geom_point(position = position_dodge(width = 0.3)),
+  geom_line(position = position_dodge(width = 0.3)),
+  geom_errorbar(aes( ymin = bias - 1.96*bias_mcse,
+                     ymax = bias + 1.96*bias_mcse ),
+                position = position_dodge( width=0.3),
+                width = 0 ), 
+  geom_hline( yintercept = 0, linetype = "dashed" ),
+  theme_minimal(), 
+  theme(legend.position = "bottom") 
+)
+
+my_geom_mm <- list(
+  geom_point(position = position_dodge(width = 0.3)),
   geom_line(position = position_dodge(width = 0.3)), 
-  geom_errorbar( aes( ymin = bias - 1.96*bias_mcse,
-                      ymax = bias + 1.96*bias_mcse ),
+  geom_errorbar( aes( ymin = bias2 - 1.96*bias2_mcse,
+                      ymax = bias2 + 1.96*bias2_mcse ),
                  position = position_dodge( width=0.3),
                  width = 0 ), 
-  geom_hline( yintercept = 0 ),
-  theme_minimal() 
+  geom_hline( yintercept = 0, linetype = "dashed"),
+  geom_hline(yintercept = -0.10, color = "red", linetype = "dashed" ),
+  geom_hline(yintercept = 0.10, color = "red", linetype = "dashed" ),
+  theme_minimal(),
+  theme(legend.position = "bottom")
 )
 
 my_geom_rmse <- list(
@@ -315,7 +354,7 @@ my_geom_rmse <- list(
                       ymax = rmse + 1.96*rmse_mcse ),
                  position = position_dodge( width=0.3),
                  width = 0 ), 
-  geom_hline( yintercept = 0),
+  geom_hline( yintercept = 0, linetype = "dashed"),
   theme_minimal() 
 )
 
@@ -326,12 +365,20 @@ labs(y = "Mean RMSE")
 )
 
 plot_simulation_bias <- function(data, x_var, y_var, col_var, facet_row, facet_col, my_geoms, plot_labs, title = "Simulation Bias") {
-  
+
+ 
+ 
+ # pd <- position_dodge(width = 0.5)
   ggplot(data, aes(x = {{x_var}}, 
                    y = {{y_var}}, 
                    col = {{col_var}}, 
                    pch = {{col_var}}, 
-                   group = {{col_var}})) +
+                   group = {{col_var}})
+                   #fill = {{col_var}})
+                    ) +
+    # boxplot the probability in Method
+  #  geom_boxplot(alpha = 0.7) + 
+    #facet_wrap(~{{col_var}}) + 
     # facet_grid handles the two factors dynamically
     facet_grid(rows = vars({{facet_row}}), 
                cols = vars({{facet_col}}), 
@@ -351,7 +398,7 @@ plot_labels <- c(
   n_objects = "Objects", 
   target_icc = "Target ICC",
   p = "Probability",
-  bias = "Bias (MAE)" 
+  bias = "MAE Bias (+- MCSE)" 
 )
 
 plot_aggregated_facet <- function(data, var_name, bias_type, lab_type) {
@@ -407,17 +454,20 @@ plot_aggregated_facet <- function(data, var_name, bias_type, lab_type) {
 
 # 3.1 Bias (Mean Absolute Error)
 
-### MAE Individual plots 
+### MAE Individual plots (collapsed over probability )
+probability is shown separately in boxplots 
 ```{r}
 
-mae_plots <- bias |>
-  group_by(icc, p) |>
+
+mae_plots <- bias_no_p |>
+  #group_by(icc, p) |>
+  group_by(icc) |>
   group_split() |>
   # 2. Map over the split data
   map(~ {
     # Extract values for a dynamic and descriptive title
     icc_val <- unique(.x$icc)
-    p_val   <- unique(.x$p)
+   # p_val   <- unique(.x$p)
     
     # Generate the plot using your generalized function
     plot_simulation_bias(
@@ -429,7 +479,7 @@ mae_plots <- bias |>
       facet_col = Objects,
       my_geoms = my_geom,
       plot_labs = plot_labels,
-      title = paste0("ICC Type: ", icc_val, " | Probability = ", p_val)
+      title = paste0("Bias Analysis (Averaged Over Probability): ", icc_val)
     )
   })
 
@@ -441,22 +491,22 @@ Save MAE plots
 
 ```{r}
 #Walk through the plots and save them in organized subdirectories
-walk(mae_plots, ~ {
-  # Pull the metadata from the individual plot's data
-  this_data <- .x$data
-  icc_dir <- as.character(unique(this_data$icc))
-  prob_dir <- as.character(unique(this_data$p))
+# walk(mae_plots, ~ {
+#   # Pull the metadata from the individual plot's data
+#   this_data <- .x$data
+#   icc_dir <- as.character(unique(this_data$icc))
+#   prob_dir <- as.character(unique(this_data$p))
   
-  # Create directory if it doesn't exist
-  if (!dir.exists(icc_dir)) dir.create(icc_dir)
+#   # Create directory if it doesn't exist
+#   if (!dir.exists(icc_dir)) dir.create(icc_dir)
   
-  # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
-  #                     "_E", unique(this_data$e_category), ".png")
-    file_name <- paste0(icc_dir, prob_dir, "/Binary_MAE_", unique(this_data$icc),unique(this_data$p), 
-                       ".png")
+#   # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
+#   #                     "_E", unique(this_data$e_category), ".png")
+#     file_name <- paste0(icc_dir, prob_dir, "/Binary_MAE_", unique(this_data$icc),
+#                        ".png")
   
-  ggsave(file_name, plot = .x, width = 12, height = 9)
-})
+#   ggsave(file_name, plot = .x, width = 12, height = 9)
+# })
 
 ```
 
@@ -465,22 +515,37 @@ Boxplots
 
 ```{r}
 plot_icc_boxplots <- function(data, icc_label) {
-  ggplot(data, aes(x = factor(k_category), y = bias, fill = method)) +
+
+  # make clean labels 
+  clean_label <- case_when(
+    icc_label == "n_raters"   ~ "Number of Raters",
+    icc_label == "n_objects"  ~ "Number of Objects",
+    icc_label == "target_icc" ~ "Target ICC Value",
+    icc_label == "p" ~ "Probability (p)",
+    TRUE                     ~ icc_label
+  )
+  ggplot(data, aes(x = factor(p), y = bias2, fill = Method)) +
     # Draw boxplots for each method side-by-side
-    geom_boxplot(outliers = FALSE, outlier.size = 0.5, alpha = 0.7, outlier.shape = NA) +
+    # geom_boxplot(outliers = FALSE, outlier.size = 0.5, alpha = 0.7, outlier.shape = NA) 
+    geom_boxplot(alpha = 0.7) +
     # Grid by Equality and Number of Objects
-    facet_grid(e_category ~ n_objects, labeller = label_both) +
+    #facet_grid(p ~ n_objects, labeller = label_both) +
     labs(
-      title = paste("Bias Analysis for ICC Type:", icc_label),
-      x = "Number of Categories (K)",
-      y = "Bias",
-      fill = "Estimation Method"
+      title = paste("Bias Analysis (Binary Data): ", icc_label),
+      x = "Probability",
+      y = "Percent Bias",
+      fill = "Method"
     ) +
     theme_bw() +
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom") +
+    geom_hline(yintercept = 0, 
+      color="lemonchiffon4", 
+      linetype="dashed", size=0.5) +
+    geom_hline(yintercept = -0.10, color = "red", linetype = "dashed" ) +
+    geom_hline(yintercept = 0.10, color = "red", linetype = "dashed" )
 }
 
-all_boxplots <- bias %>%
+mae_boxplots <- bias %>%
   group_by(icc) %>%
   group_split() %>%
   map(~ {
@@ -494,22 +559,22 @@ all_boxplots <- bias %>%
 ```
 
 ```{r}
-# Walk through the plots and save them in organized subdirectories
-walk(all_boxplots, ~ {
-  # Pull the metadata from the individual plot's data
-  this_data <- .x$data
-  icc_dir <- as.character(unique(this_data$icc))
+#Walk through the plots and save them in organized subdirectories
+# walk(mae_boxplots, ~ {
+#   # Pull the metadata from the individual plot's data
+#   this_data <- .x$data
+#   icc_dir <- as.character(unique(this_data$icc))
   
-  # Create directory if it doesn't exist
-  if (!dir.exists(icc_dir)) dir.create(icc_dir)
+#   # Create directory if it doesn't exist
+#   if (!dir.exists(icc_dir)) dir.create(icc_dir)
   
-  # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
-  #                     "_E", unique(this_data$e_category), ".png")
-    file_name <- paste0(icc_dir, "/Boxplot_", unique(this_data$icc), 
-                       ".png")
+#   # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
+#   #                     "_E", unique(this_data$e_category), ".png")
+#     file_name <- paste0(icc_dir, "/Boxplot_", unique(this_data$icc), 
+#                        ".png")
   
-  ggsave(file_name, plot = .x, width = 12, height = 9)
-})
+#   ggsave(file_name, plot = .x, width = 12, height = 9)
+#  })
 
 ```
 
@@ -529,40 +594,41 @@ plot_aggregated_facet <- function(data, var_name) {
     var_name == "n_raters"   ~ "Number of Raters",
     var_name == "n_objects"  ~ "Number of Objects",
     var_name == "target_icc" ~ "Target ICC Value",
-    var_name == "k_category" ~ "Number of Categories (K)",
+    var_name == "p" ~ "Probability",
     var_name == "e_category" ~ "Equality of Categories",
     TRUE                     ~ var_name
   )
   
   # 2. Aggregate including 'icc' in the grouping
   agg_data <- data %>%
-    group_by(icc, .data[[var_name]], method) %>%
+    group_by(icc, .data[[var_name]], Method) %>%
     summarise(mean_bias = mean(bias, na.rm = TRUE),
               sd_bias = sd(bias, na.rm = TRUE),
+              mean_mcse = sqrt(mean(bias_mcse^2, na.rm = TRUE)),
               .groups = "drop")
   
   pd <- position_dodge(width = 0.5)
 
   # 3. Plot with Faceting by ICC
   ggplot(agg_data, aes(x = factor(.data[[var_name]]), y = mean_bias, 
-                       group = method, color = method)) +
+                       group = Method, color = Method)) +
     geom_line(linewidth = 1, position =pd) +
     geom_point(size = 2, position = pd) + 
     geom_hline(yintercept = 0, color="lemonchiffon4", linetype="dashed", size=0.5) + 
-    geom_errorbar(aes(ymin = mean_bias - sd_bias, ymax = mean_bias + sd_bias), 
+    geom_errorbar(aes(ymin = mean_bias - mean_mcse, ymax = mean_bias + mean_mcse), 
                   width = 0.2, alpha = 0.4, position = pd) +
     # Facet by ICC type to see all metrics at once
     facet_wrap(~icc, labeller = label_value) + 
     labs(title = paste("Aggregated Effect of", clean_label),
          x = clean_label, 
-         y = "Mean Bias (±1 SD)") +
+         y = "Mean MAE Bias (± Mean MCSE)") +
     theme_bw() +
     theme(legend.position = "bottom")
 }
 ```
 
 ```{r}
-factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category")
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "p")
 
 # Generate a list of faceted plots
 final_agg_plots <- map(set_names(factors_to_test), ~ {
@@ -574,117 +640,158 @@ Save aggregated plots
 
 ```{r}
 
-# Define the output directory
-output_dir <- "~/Documents/Github/MastersThesis/iccs/aggregated_plots"
+# # Define the output directory
+# output_dir <- "~/Documents/Github/MastersThesis/iccs/aggregated_plots/"
 
-# Create the folder if it doesn't already exist
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir)
-}
+# # Create the folder if it doesn't already exist
+# if (!dir.exists(output_dir)) {
+#   dir.create(output_dir)
+# }
 
 # 4. Save each plot using iwalk (iteration with names)
-iwalk(final_agg_plots, function(p, factor_name) {
+# iwalk(final_agg_plots, function(p, factor_name) {
   
-  # Construct a clean filename
-  file_name <- file.path(output_dir, paste0("summary_", factor_name, ".png"))
+#   # Construct a clean filename
+#   file_name <- file.path(output_dir, paste0("summary_binary_", factor_name, ".png"))
   
-  # Save with high resolution (300 DPI) for clarity
-  ggsave(
-    filename = file_name, 
-    plot = p, 
-    width = 12,    # Wider to accommodate multiple ICC facets
-    height = 8, 
-    units = "in",
-    dpi = 300
-  )
+#   # Save with high resolution (300 DPI) for clarity
+#   ggsave(
+#     filename = file_name, 
+#     plot = p, 
+#     width = 12,    # Wider to accommodate multiple ICC facets
+#     height = 8, 
+#     units = "in",
+#     dpi = 300
+#   )
   
-  message(paste("Saved:", file_name))
-})
+#   message(paste("Saved:", file_name))
+# })
 ```
 
 ### 2.1.2 Bias (Muthen & Muthen)
 - Here, if bias is less than 10% then it is good
 ```{r}
-# my_geom2 <- list(
-#   geom_point(position = position_dodge(width = 0.3)),
-#   geom_line(position = position_dodge(width = 0.3)), 
-#   geom_errorbar( aes( ymin = bias2 - 1.96*bias_mcse,
-#                       ymax = bias2 + 1.96*bias_mcse ),
-#                  position = position_dodge( width=0.3),
-#                  width = 0 ), 
-#   geom_hline( yintercept = 0 ),
-#   theme_minimal(), 
-#   geom_hline(yintercept = -0.10, linetype='dotted', col = 'red'),
-#   scale_y_continuous(labels = scales::label_percent())
-# )
 
-# bias_long_k3_equal <- bias_full |>
-#   mutate(bias2 = bias/target_icc) |>
-#   filter(k_category == 3 & e_category == "TRUE") 
+mm_labs <- c(
+  n_raters = "Raters", 
+  n_objects = "Objects", 
+  target_icc = "Target ICC",
+  n_category = "Category",
+  bias = "Percent Bias (+- MCSE) " 
+)
 
-# p7 <- ggplot(bias_long_k3_equal, aes(n_raters, bias2, 
-#                        col=method, pch=method, group=method ) ) +
-#   facet_grid( target_icc ~ n_objects, labeller = label_both ) +
-#   ggtitle("K = 3, equal") + 
-#   my_geom2
-
-# bias_long_k3_notequal <- bias_full |>
-#   mutate(bias2 = bias/target_icc) |>
-#  filter(k_category == 3 & e_category == "FALSE") 
-
-# p8 <- ggplot(bias_long_k3_notequal, aes(n_raters, bias2, 
-#                        col=method, pch=method, group=method ) ) +
-#   facet_grid( target_icc ~ n_objects, labeller = label_both ) +
-#  ggtitle("K=3, not equal") + 
-#  my_geom2
-
-# bias_long_k5_equal <- bias_full |>
-#   mutate(bias2 = bias/target_icc) |>
-# filter(k_category == 5 & e_category == "TRUE") 
-
-# p9 <- ggplot(bias_long_k5_equal, aes(n_raters, bias2, 
-#                        col=method, pch=method, group=method ) ) +
-#   facet_grid( target_icc ~ n_objects, labeller = label_both ) +
-#  ggtitle("K = 5, equal") +
-#  my_geom2
-
-# bias_long_k5_notequal <- bias_full |>
-#   mutate(bias2 = bias/target_icc) |>
-#  filter(k_category == 5 & e_category == "FALSE") 
+mm_plots <- bias_no_p |>
+  group_by(icc) |>
+  group_split() |>
+  # 2. Map over the split data
+  map(~ {
+    # Extract values for a dynamic and descriptive title
+    icc_val <- unique(.x$icc)
+    #k_val   <- unique(.x$k_category)
+    #e_val   <- unique(.x$e_category)
+    
+    # Generate the plot using your generalized function
+    plot_simulation_bias(
+      data = .x,
+      x_var = n_raters,
+      y_var = bias2,
+      col_var = Method,
+      facet_row = `Target ICC`,
+      facet_col = Objects,
+      my_geoms = my_geom_mm,
+      plot_labs = mm_labs, 
+      paste0("Bias Analysis (Averaged Over Probability): ", icc_val)
+    )
+  })
 
 
-# p10 <- ggplot(bias_long_k5_notequal, aes(n_raters, bias2, 
-#                        col=method, pch=method, group=method ) ) +
-#   facet_grid( target_icc ~ n_objects, labeller = label_both ) +
-#   ggtitle("K=5, not equal") +
-#   my_geom2
+mm_plots
 
-# bias_long_k7_equal <- bias_full |>
-#   mutate(bias2 = bias/target_icc) |>
-#  filter(k_category == 7 & e_category == "TRUE") 
 
-# p11 <- ggplot(bias_long_k7_equal, aes(n_raters, bias2, 
-#                        col=method, pch=method, group=method ) ) +
-#   facet_grid( target_icc ~ n_objects, labeller = label_both ) +
-#   ggtitle("K=7, equal") +
-#   my_geom2
+```
 
-# bias_long_k7_notequal <- bias_full |>
-#   mutate(bias2 = bias/target_icc) |>
-#  filter(k_category == 7 & e_category == "FALSE") 
 
-# p12 <- ggplot(bias_long_k7_notequal, aes(n_raters, bias2, 
-#                        col=method, pch=method, group=method ) ) +
-#   facet_grid( target_icc ~ n_objects, labeller = label_both ) +
-#   ggtitle("K=7, not equal") + 
-#   my_geom2
+```{r}
+#Walk through the plots and save them in organized subdirectories
+# walk(mm_plots, ~ {
+#   # Pull the metadata from the individual plot's data
+#   this_data <- .x$data
+#   icc_dir <- as.character(unique(this_data$icc))
+#   prob_dir <- as.character(unique(this_data$p))
+  
+#   # Create directory if it doesn't exist
+#   if (!dir.exists(icc_dir)) dir.create(icc_dir)
+  
+#   # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
+#   #                     "_E", unique(this_data$e_category), ".png")
+#     file_name <- paste0(icc_dir, prob_dir, "/Binary_MM_", unique(this_data$icc),
+#                        ".png")
+  
+#   ggsave(file_name, plot = .x, width = 12, height = 9)
+# })
+```
 
-# p7
-# p8
-# p9
-# p10
-# p11
-# p12
+
+## 3.4 Root Mean Square Error (RMSE)
+
+### RMSE Individual Plots 
+```{r}
+rmse_labs <- c(
+  n_raters = "Raters", 
+  n_objects = "Objects", 
+  target_icc = "Target ICC",
+  n_category = "Category",
+  bias = "RMSE (+- MCSE)" 
+)
+
+rmse_plots <- bias_no_p |>
+  group_by(icc) |>
+  group_split() |>
+  # 2. Map over the split data
+  map(~ {
+    # Extract values for a dynamic and descriptive title
+    icc_val <- unique(.x$icc)
+    # k_val   <- unique(.x$k_category)
+    # e_val   <- unique(.x$e_category)
+    
+    # Generate the plot using your generalized function
+    plot_simulation_bias(
+      data = .x,
+      x_var = n_raters,
+      y_var = rmse,
+      col_var = Method,
+      facet_row = `Target ICC`,
+      facet_col = Objects,
+      my_geoms = my_geom_rmse,
+      plot_labs = rmse_labs, 
+      title = paste0("RMSE: ", icc_val)
+    )
+  })
+
+
+rmse_plots
+```
+
+Save RMSE plots 
+```{r}
+#Walk through the plots and save them in organized subdirectories
+# walk(rmse_plots, ~ {
+#   # Pull the metadata from the individual plot's data
+#   this_data <- .x$data
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #prob_dir <- as.character(unique(this_data$p))
+  
+#   # Create directory if it doesn't exist
+#   if (!dir.exists(icc_dir)) dir.create(icc_dir)
+  
+#   # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
+#   #                     "_E", unique(this_data$e_category), ".png")
+#     file_name <- paste0(icc_dir, "/Binary_RMSE_", unique(this_data$icc),
+#                        ".png")
+  
+#   ggsave(file_name, plot = .x, width = 12, height = 9)
+# })
+
 ```
 
 
@@ -783,3 +890,122 @@ p18
 
 relative bias (calibration) of v  = V_bar (the average variance of across replications, of the variance/SE for each replication utilizing a variance estimator of ICC ) / standard devaition( of T across all replications!)
 
+## Comparison to CAA
+
+```{r}
+dat_avg <- dat_caa |>
+  #some NA (4) in g-ICC(C,k) and negative aov_iccs |>
+  filter(estimate >= 0 )|>
+  filter(method != "icc") |> # Makes it easier to assess LMM since so similar 
+  summarize(
+    mean_estimate = mean(estimate), 
+    .by = c(n_raters, n_objects, target_icc, icc, p, icc_type, condition, method)
+  ) |> 
+  mutate(
+    # 1. Convert double to factor, 2. Rename the levels
+    icc_type = as.factor(icc_type),
+    icc_type = fct_recode(icc_type,
+      "ICC(A,1)" = "1",
+      "ICC(A,k)"  = "2",
+      "ICC(C,1)" = "3",
+      "ICC(C,k)" ="4"
+    )
+  )
+rm(dat_caa) # save RAM space
+```
+
+Plot functions
+
+```{r}
+
+plot_multi_facet_correlation <- function(data, 
+                                        # col_factor,
+                                        caa_metric = "kappa_adj", 
+                                        icc_metric = "g_icc"
+                                         ) {
+  
+  # 1. Clean labels for the columns and rows
+  get_label <- function(x) {
+    case_when(
+      x == "n_raters"   ~ "Number of Raters",
+      x == "n_objects"  ~ "Number of Objects",
+      x == "target_icc" ~ "Target ICC Value",
+      x == "k_category" ~ "Number of Categories (K)",
+      x == "icc_type"   ~ "ICC Metric Type",
+      x == "kappa_adj" ~ "Kappa Adjusted",
+      x == "s_bp_adj"  ~ "Brennen-Prediger Adjusted",
+      x == "g_icc" ~ "G-ICC",   
+      TRUE              ~ x
+    )
+  }
+
+  # 2. The Join Algorithm (Ensures Kappa and ICC are paired correctly)
+  caa_df <- data %>%
+    filter(method == caa_metric) %>%
+    rename(baseline_val = mean_estimate) %>%
+    select(-method)
+
+  icc_df <- data %>%
+    filter(method != caa_metric) %>% # Assumes other metrics are your ICCs
+    filter(method == icc_metric) %>%
+    rename(icc_val = mean_estimate) %>%
+    select(-method,icc)
+
+  cor_data <- inner_join(caa_df, icc_df, 
+                         by = c("n_raters", "n_objects", "target_icc", "p", "icc_type","condition")) 
+                         #%>%
+    # Optional: Integrated Outlier Filter (adjust threshold as needed)
+    #filter(abs(icc_val) <= 2, abs(baseline_val) <= 2) #do this for now
+
+  # 3. Plotting with Dynamic Faceting
+  ggplot(cor_data, aes(x = baseline_val, y = icc_val, color = icc_type)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+    stat_cor(aes(label = ..r.label..), method = "pearson", size = 3) +
+    # Dynamic Grid: Rows are typically ICC types, Columns are your target factor
+    # facet_grid(rows = vars(.data[[row_factor]]), 
+    #            cols = vars(.data[[col_factor]]), 
+    #            labeller = label_both) +
+    labs(
+      title = paste("Correlation Analysis:", get_label(caa_metric), "vs", get_label(icc_metric)),
+      # subtitle = paste("Faceted by", get_label(row_factor), "and", get_label(col_factor)),
+      subtitle = paste("Faceted by ICC Data Generating Process"),
+      x = paste("Average", get_label(caa_metric)),
+      y = "Average G-ICC Estimate",
+      color = "ICC-DGP Type"
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom") + 
+    geom_abline(intercept = 0, slope = 1, color = "orange", linetype = "dashed")
+}
+```
+
+
+Create plot
+
+
+```{r}
+# Define the factors you want to loop through
+factors_to_analyze <- c("kappa_adj", "s_bp_adj")
+
+# Generate the plots
+hyper_cor_plots <- map(set_names(factors_to_analyze), ~ {
+  plot_multi_facet_correlation(
+    data = dat_avg, 
+    caa_metric = .x,
+  )
+})
+
+
+
+# Save the architecture
+# output_dir <- "icc_kappa_correlations"
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# iwalk(hyper_cor_plots, function(p, factor_name) {
+#   ggsave(
+#     file.path(output_dir, paste0("hyper_corr_", factor_name, ".png")), 
+#     plot = p, width = 16, height = 12, dpi = 300
+#   )
+# })
+```

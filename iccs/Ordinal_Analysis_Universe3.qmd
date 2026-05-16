@@ -120,12 +120,14 @@ params2 <- params |>
     "ordinal_onlyglmmtmb_",condition,"_",seed,".rds"))
   
 
-ODIR <- "~/Documents/Github/MastersThesis/iccs/data/"
+ODIR <- "~/Documents/Github/MastersThesis/iccs/data/universe_3"
 #glmmtmb linear fits only 
 dat_nest2 <- nest_rds_files(params2, "filename", ODIR)
 
 #head(params)
 #head(params2)
+
+dat_nest3 <- readRDS("~/Documents/Github/MastersThesis/iccs/data/ordinal_Uthree5_AOV.rds")
 ```
 
 Here, I  unnested the entire simulation sets to obtain the full data 
@@ -134,11 +136,13 @@ Here, I  unnested the entire simulation sets to obtain the full data
 
 
 dat <- dat_nest |> unnest(result)
-dat2 <- dat_nest2 |> unnest(result)
+dat2 <- dat_nest2 |> unnest(result) #only fixed linear *not generalized* glmmsTMB fits
+dat3 <- dat_nest3 |> unnest(result) #only fixed AOV fits (J.G. fix)
 
 # Delete nested object
 rm(dat_nest) # no longer neaded 
-rm(dat_nest2 ) #no longer needed
+rm(dat_nest2) #no longer needed
+rm(dat_nest3) #no longer needed
 
 # Set each condition of the simulations as factors 
 conds <- c("n_raters", "n_objects", "k_category", "icc", "e_category", "icc_type", "condition", "method")
@@ -146,15 +150,56 @@ dat <- dat |>
   mutate(across(.cols = all_of(conds), .fns = as.factor))
 dat2 <- dat2 |> 
   mutate(across(.cols = all_of(conds), .fns = as.factor))
+dat3 <- dat3 |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
 
+```
+
+Need to replace the AOV fits in `dat` with `dat3` (thanks to J.G. Fix)
+```{r}
+dat <- dat |> 
+  filter(method != "aov_icc") |>
+  bind_rows(dat3) #dat3 only contains fixed "aov_icc"
+
+rm(dat3) # no longer needed
 ```
 
 Critically, datasets were subsetted so that each g_icc() is matched with its corresponding data generating variance (DGP) hyper-parameters
 
 ```{r}
+# dat <- dat |>
+#   select(-seed, -filename) |>
+#   filter(
+#     (icc_type == 1 & icc == "ICC(A,1)") |
+#     (icc_type == 2 & icc == "ICC(A,k)") |
+#     (icc_type == 3 & icc == "ICC(C,1)") |
+#     (icc_type == 4 & icc == "ICC(C,k)"))
+
+# dat2 <- dat2 |>
+#   select(-seed, -filename) |>
+#   filter(
+#     (icc_type == 1 & icc == "ICC(A,1)") |
+#     (icc_type == 2 & icc == "ICC(A,k)") |
+#     (icc_type == 3 & icc == "ICC(C,1)") |
+#     (icc_type == 4 & icc == "ICC(C,k)"))
+
+# dat3 <- dat3 |>
+#   select(-seed, -filename) |>
+#   filter(
+#     (icc_type == 1 & icc == "ICC(A,1)") |
+#     (icc_type == 2 & icc == "ICC(A,k)") |
+#     (icc_type == 3 & icc == "ICC(C,1)") |
+#     (icc_type == 4 & icc == "ICC(C,k)"))
+
+```
+
+
+
+
+```{r}
 #| code-fold: true
 
-# for point-estimate analyses
+# for point-estimate analyses, combine first with dat2 
 dat_full <- bind_rows(dat, dat2) |>
   select(-seed, -filename) |>
   filter(
@@ -162,6 +207,13 @@ dat_full <- bind_rows(dat, dat2) |>
     (icc_type == 2 & icc == "ICC(A,k)") |
     (icc_type == 3 & icc == "ICC(C,1)") |
     (icc_type == 4 & icc == "ICC(C,k)"))
+
+
+# remove all the old aov_iccs
+# dat_full <- dat_full |> 
+#   filter(method != "aov_icc")
+
+#dat_full <- bind_rows(dat, dat2)
 
 # for CAA analysis 
 dat_caa <- bind_rows(dat,dat2) |> 
@@ -305,8 +357,8 @@ negative_summary |>
     target_columns = everything(),
     method = "factor",
     palette = "RColorBrewer::Blues"
-  ) |> 
-  gtsave("negative_ICC_rates_ordinal.png")
+  ) #|> 
+ # gtsave("negative_ICC_rates_ordinal_fixed.png")
 ```
 
 # 3. Performance Measures for Point Estimators
@@ -342,7 +394,31 @@ bias <- dat_full |>
   mutate(`Target ICC` = target_icc) |>
   mutate(`Category Equality` = e_category)
 
-  
+#average over category and equality 
+bias_noK_noE <- dat_full |>
+  #some NA (4) in g-ICC(C,k) and negative aov_iccs |>
+  filter(estimate >= 0 )|>
+  filter(method != "icc") |> # Makes it easier to assess LMM-ICCs since so similar 
+  summarize(
+    simhelpers::calc_absolute( 
+      estimates = estimate, true_param = target_icc, 
+      criteria = c("bias","stddev","rmse")
+    ), 
+    .by = c(n_raters, n_objects, target_icc, icc, method)
+  ) |>
+  mutate(bias2 = bias/target_icc) |> #Muthen&Muthen
+  mutate(bias2_mcse = bias_mcse/target_icc) |> #Muthen&Muthen
+  mutate(Method = fct_recode(method, 
+    "LMM {lme4}" = "icc",
+    "LMM {glmmtmb}" = "icc_glmmtmb",
+    "GLMM {ordinal}" = "g_icc", 
+    "ANOVA {lm}" = "aov_icc", )
+  ) |> 
+  mutate(Objects = n_objects) |> 
+  mutate(`Target ICC` = target_icc) #|>
+ # mutate(`Category Equality` = e_category)
+
+
   
 ```
 
@@ -357,10 +433,11 @@ my_geom <- list(
                       ymax = bias + 1.96*bias_mcse ),
                  position = position_dodge( width=0.3),
                  width = 0 ), 
-  geom_hline( yintercept = 0 ),
+  geom_hline( yintercept = 0, linetype = "dashed" ),
   theme_minimal() 
 )
 
+#muthen&muthen
 my_geom2 <- list(
   geom_point(position = position_dodge(width = 0.3)),
   geom_line(position = position_dodge(width = 0.3)), 
@@ -368,7 +445,7 @@ my_geom2 <- list(
                       ymax = bias2 + 1.96*bias2_mcse ),
                  position = position_dodge( width=0.3),
                  width = 0 ), 
-  geom_hline( yintercept = 0),
+  geom_hline( yintercept = 0, linetype = "dashed"),
   geom_hline(yintercept = -0.10, color = "red", linetype = "dashed" ),
   geom_hline(yintercept = 0.10, color = "red", linetype = "dashed" ),
   theme_minimal() 
@@ -381,7 +458,7 @@ my_geom_rmse <- list(
                       ymax = rmse + 1.96*rmse_mcse ),
                  position = position_dodge( width=0.3),
                  width = 0 ), 
-  geom_hline( yintercept = 0),
+  geom_hline( yintercept = 0, linetype = "dashed"),
   theme_minimal() 
 )
 
@@ -516,19 +593,24 @@ Boxplots
 
 ```{r}
 plot_icc_boxplots <- function(data, icc_label) {
-  ggplot(data, aes(x = factor(k_category), y = bias, fill = Method)) +
+  ggplot(data, aes(x = factor(k_category), y = bias2, fill = Method)) +
     # Draw boxplots for each method side-by-side
     geom_boxplot(outliers = FALSE, outlier.size = 0.5, alpha = 0.7, outlier.shape = NA) +
     # Grid by Equality and Number of Objects
-    facet_grid(`Category Equality` ~ Objects, labeller = label_both) +
+   facet_wrap(vars(`Category Equality`), labeller = label_both) +
     labs(
-      title = paste("Bias Analysis for ICC Type:", icc_label),
+      title = paste("Bias Analysis (Ordinal): ", icc_label),
       x = "Number of Categories (K)",
-      y = "Bias (MAE)",
-      fill = "Estimation Method"
+      y = "Percent Bias",
+      fill = "Method"
     ) +
     theme_bw() +
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom") + 
+    geom_hline(yintercept = 0, 
+      color="lemonchiffon4", 
+      linetype="dashed", size=0.5) + 
+    geom_hline(yintercept = -0.10, color = "red", linetype = "dashed" ) +
+    geom_hline(yintercept = 0.10, color = "red", linetype = "dashed" ) 
 }
 
 mae_boxplots <- bias %>%
@@ -546,7 +628,7 @@ mae_boxplots <- bias %>%
 Save boxplots
 ```{r}
 # # Walk through the plots and save them in organized subdirectories
-# walk(all_boxplots, ~ {
+# walk(mae_boxplots, ~ {
 #   # Pull the metadata from the individual plot's data
 #   this_data <- .x$data
 #   icc_dir <- as.character(unique(this_data$icc))
@@ -619,19 +701,20 @@ mm_labs <- c(
   n_raters = "Raters", 
   n_objects = "Objects", 
   target_icc = "Target ICC",
-  n_category = "Category",
-  bias = "Bias (Muthén & Muthén)" 
+  #n_category = "Category",
+  bias = "Percent Bias (+- MCSE)" 
 )
 
-mm_plots <- bias |>
-  group_by(icc, k_category, e_category) |>
+mm_plots <- bias_noK_noE |>
+  #group_by(icc, k_category, e_category) |>
+  group_by(icc) |>
   group_split() |>
   # 2. Map over the split data
   map(~ {
     # Extract values for a dynamic and descriptive title
     icc_val <- unique(.x$icc)
-    k_val   <- unique(.x$k_category)
-    e_val   <- unique(.x$e_category)
+   # k_val   <- unique(.x$k_category)
+   # e_val   <- unique(.x$e_category)
     
     # Generate the plot using your generalized function
     plot_simulation_bias(
@@ -643,13 +726,38 @@ mm_plots <- bias |>
       facet_col = Objects,
       my_geoms = my_geom2,
       plot_labs = mm_labs, 
-      title = paste0("ICC Type: ", icc_val, " | K = ", k_val, ", Equal = ", e_val)
+      title = paste0("Percent Bias (Averaged Over Category and Prevalence): ", icc_val)
     )
   })
 
 
 mm_plots
 ```
+
+Save individual faceted plots 
+
+```{r}
+#Walk through the plots and save them in organized subdirectories
+# walk(mm_plots, ~ {
+#   # Pull the metadata from the individual plot's data
+#   this_data <- .x$data
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #prob_dir <- as.character(unique(this_data$p))
+  
+#   # Create directory if it doesn't exist
+#   if (!dir.exists(icc_dir)) dir.create(icc_dir)
+  
+#   # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
+#   #                     "_E", unique(this_data$e_category), ".png")
+#     file_name <- paste0(icc_dir, "/Ordinal_MM_", unique(this_data$icc),
+#                        ".png")
+  
+#   ggsave(file_name, plot = .x, width = 12, height = 9)
+# })
+
+```
+
+
 
 ### Muthen & Muthen Aggregated plots 
 
@@ -676,19 +784,19 @@ rmse_labs <- c(
   n_raters = "Raters", 
   n_objects = "Objects", 
   target_icc = "Target ICC",
-  n_category = "Category",
-  bias = "RMSE" 
+  #n_category = "Category",
+  bias = "RMSE (+- MCSE)" 
 )
 
-rmse_plots <- bias |>
-  group_by(icc, k_category, e_category) |>
+rmse_plots <- bias_noK_noE |>
+  group_by(icc) |>
   group_split() |>
   # 2. Map over the split data
   map(~ {
     # Extract values for a dynamic and descriptive title
     icc_val <- unique(.x$icc)
-    k_val   <- unique(.x$k_category)
-    e_val   <- unique(.x$e_category)
+   # k_val   <- unique(.x$k_category)
+   # e_val   <- unique(.x$e_category)
     
     # Generate the plot using your generalized function
     plot_simulation_bias(
@@ -700,13 +808,37 @@ rmse_plots <- bias |>
       facet_col = Objects,
       my_geoms = my_geom_rmse,
       plot_labs = rmse_labs, 
-      title = paste0("ICC Type: ", icc_val, " | K = ", k_val, ", Equal = ", e_val)
+      title = paste0("RMSE (Averaged over Category and Prevalence): ", icc_val)
     )
   })
 
 
 rmse_plots
 ```
+
+save rmse plots
+
+```{r}
+#Walk through the plots and save them in organized subdirectories
+# walk(rmse_plots, ~ {
+#   # Pull the metadata from the individual plot's data
+#   this_data <- .x$data
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #prob_dir <- as.character(unique(this_data$p))
+  
+#   # Create directory if it doesn't exist
+#   if (!dir.exists(icc_dir)) dir.create(icc_dir)
+  
+#   # file_name <- paste0(icc_dir, "/K", unique(this_data$k_category), 
+#   #                     "_E", unique(this_data$e_category), ".png")
+#     file_name <- paste0(icc_dir, "/Ordinal_RMSE_", unique(this_data$icc),
+#                        ".png")
+  
+#   ggsave(file_name, plot = .x, width = 12, height = 9)
+# })
+
+```
+
 
 ### RMSE Aggregated plots 
 Aggregated RMSE plots 
@@ -732,6 +864,7 @@ Relative bias (calibration) of v  = V_bar (the average variance of across replic
 
 # 4. Comparison to CAA
 
+## Comparison to CAA
 
 ```{r}
 dat_avg <- dat_caa |>
@@ -741,6 +874,16 @@ dat_avg <- dat_caa |>
   summarize(
     mean_estimate = mean(estimate), 
     .by = c(n_raters, n_objects, target_icc, icc, k_category, e_category, icc_type, condition, method)
+  ) |> 
+  mutate(
+    # 1. Convert double to factor, 2. Rename the levels
+    icc_type = as.factor(icc_type),
+    icc_type = fct_recode(icc_type,
+      "ICC(A,1)" = "1",
+      "ICC(A,k)"  = "2",
+      "ICC(C,1)" = "3",
+      "ICC(C,k)" ="4"
+    )
   )
 rm(dat_caa) # save RAM space
 ```
@@ -750,9 +893,10 @@ Plot functions
 ```{r}
 
 plot_multi_facet_correlation <- function(data, 
-                                         col_factor, 
-                                         row_factor = "icc_type", 
-                                         caa_metric = "kappa_adj") {
+                                        # col_factor,
+                                        caa_metric = "kappa_adj", 
+                                        icc_metric = "g_icc"
+                                         ) {
   
   # 1. Clean labels for the columns and rows
   get_label <- function(x) {
@@ -762,6 +906,9 @@ plot_multi_facet_correlation <- function(data,
       x == "target_icc" ~ "Target ICC Value",
       x == "k_category" ~ "Number of Categories (K)",
       x == "icc_type"   ~ "ICC Metric Type",
+      x == "kappa_adj" ~ "Kappa Adjusted",
+      x == "s_bp_adj"  ~ "Brennen-Prediger Adjusted",
+      x == "g_icc" ~ "G-ICC",   
       TRUE              ~ x
     )
   }
@@ -774,29 +921,32 @@ plot_multi_facet_correlation <- function(data,
 
   icc_df <- data %>%
     filter(method != caa_metric) %>% # Assumes other metrics are your ICCs
-    filter(method == "g_icc") %>%
+    filter(method == icc_metric) %>%
     rename(icc_val = mean_estimate) %>%
     select(-method,icc)
 
   cor_data <- inner_join(caa_df, icc_df, 
-                         by = c("n_raters", "n_objects", "target_icc", "k_category", "e_category", "icc_type","condition")) %>%
+                         by = c("n_raters", "n_objects", "target_icc", "k_category","e_category", "icc_type","condition")) 
+                         #%>%
     # Optional: Integrated Outlier Filter (adjust threshold as needed)
-    filter(abs(icc_val) <= 2, abs(baseline_val) <= 2) #do this for now
+    #filter(abs(icc_val) <= 2, abs(baseline_val) <= 2) #do this for now
 
   # 3. Plotting with Dynamic Faceting
-  ggplot(cor_data, aes(x = baseline_val, y = icc_val)) +
+  ggplot(cor_data, aes(x = baseline_val, y = icc_val, color = icc_type)) +
     geom_point(alpha = 0.3, size = 1) +
     geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
     stat_cor(aes(label = ..r.label..), method = "pearson", size = 3) +
     # Dynamic Grid: Rows are typically ICC types, Columns are your target factor
-    facet_grid(rows = vars(.data[[row_factor]]), 
-               cols = vars(.data[[col_factor]]), 
-               labeller = label_both) +
+    # facet_grid(rows = vars(.data[[row_factor]]), 
+    #            cols = vars(.data[[col_factor]]), 
+    #            labeller = label_both) +
     labs(
-      title = paste("Correlation Analysis:", caa_metric, "vs. G-ICC"),
-      subtitle = paste("Faceted by", get_label(row_factor), "and", get_label(col_factor)),
-      x = paste("Average", caa_metric),
-      y = "Average ICC Estimate"
+      title = paste("Correlation Analysis:", get_label(caa_metric), "vs", get_label(icc_metric)),
+      # subtitle = paste("Faceted by", get_label(row_factor), "and", get_label(col_factor)),
+      subtitle = paste("Faceted by ICC Data Generating Process"),
+      x = paste("Average", get_label(caa_metric)),
+      y = "Average G-ICC Estimate",
+      color = "ICC-DGP Type"
     ) +
     theme_bw() +
     theme(legend.position = "bottom") + 
@@ -810,13 +960,13 @@ Create plot
 
 ```{r}
 # Define the factors you want to loop through
-factors_to_analyze <- c("n_raters", "n_objects", "k_category")
+factors_to_analyze <- c("kappa_adj", "s_bp_adj")
 
 # Generate the plots
 hyper_cor_plots <- map(set_names(factors_to_analyze), ~ {
   plot_multi_facet_correlation(
     data = dat_avg, 
-    col_factor = .x,
+    caa_metric = .x,
   )
 })
 
