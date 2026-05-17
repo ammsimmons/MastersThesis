@@ -127,7 +127,7 @@ dat_nest2 <- nest_rds_files(params2, "filename", ODIR)
 #head(params)
 #head(params2)
 
-dat_nest3 <- readRDS("~/Documents/Github/MastersThesis/iccs/data/ordinal_Uthree5_AOV.rds")
+dat_nest3 <- readRDS("~/Documents/Github/MastersThesis/iccs/data/fullsets/ordinal_Uthree5_AOV.rds")
 ```
 
 Here, I  unnested the entire simulation sets to obtain the full data 
@@ -273,40 +273,40 @@ errors <- dat_full |>
   "LMM {lme4}" = "icc",
   "LMM {glmmtmb}" = "icc_glmmtmb",
   "GLMM {ordinal}" = "g_icc", 
-  "ANOVA {lm}" = "aov_icc", 
+  "ANOVA {stats}" = "aov_icc", 
   ))
 
 ```
 
 Print {gt} Table 
 ```{r}
-errors |>
-  gt() |>
-  my_gt_theme() |>
-  tab_header(
-    title = "Simulation Failure Rates (Ordinal Data)",
-    subtitle = "Comparing Across Method and ICC-Type"
-  ) |>
-  # Format the percentage column (adds the % sign and rounds to 1 decimal)
-  fmt_percent(
-    columns = percent_error,
-    scale_values = FALSE,
-    decimals = 2
-  ) |>
-  # Make the column names look professional
-  cols_label(
-    method = "Method",
-    icc = "ICC Type",
-    total_trials = "Total Trials",
-    invalid_trials = "Invalid Trials",
-    percent_error = "Percent Error"
-  ) |>
-  data_color(
-    column = icc,
-    target_columns = everything(),
-    method = "factor",
-    palette = "RColorBrewer::Blues"
-  ) #|>
+# errors |>
+#   gt() |>
+#   my_gt_theme() |>
+#   tab_header(
+#     title = "Simulation Failure Rates (Ordinal Data)",
+#     subtitle = "Comparing Across Method and ICC-Type"
+#   ) |>
+#   # Format the percentage column (adds the % sign and rounds to 1 decimal)
+#   fmt_percent(
+#     columns = percent_error,
+#     scale_values = FALSE,
+#     decimals = 2
+#   ) |>
+#   # Make the column names look professional
+#   cols_label(
+#     method = "Method",
+#     icc = "ICC Type",
+#     total_trials = "Total Trials",
+#     invalid_trials = "Invalid Trials",
+#     percent_error = "Percent Error"
+#   ) |>
+#   data_color(
+#     column = icc,
+#     target_columns = everything(),
+#     method = "factor",
+#     palette = "RColorBrewer::Blues"
+#   ) #|>
   #gtsave("failure_rates_ordinal.png")
 ```
 
@@ -328,37 +328,73 @@ negative_summary <- dat_full |>
   "LMM {lme4}" = "icc",
   "LMM {glmmtmb}" = "icc_glmmtmb",
   "GLMM {ordinal}" = "g_icc", 
-  "ANOVA {lm}" = "aov_icc", 
+  "ANOVA {stats}" = "aov_icc", 
   ))
 
-negative_summary |>
+# negative_summary |>
+#   gt() |>
+#   my_gt_theme() |>
+#   tab_header(
+#     title = "Negative ICC Rates (Ordinal Data)",
+#     subtitle = "Comparing Across Method and ICC-Type"
+#   ) |>
+#   # Format the percentage column (adds the % sign and rounds to 1 decimal)
+#   fmt_percent(
+#     columns = negative_pct,
+#     scale_values = FALSE, 
+#     decimals = 2
+#   ) |>
+#   # Make the column names look professional
+#   cols_label(
+#     method = "Method",
+#     icc = "ICC Type",
+#     total_trials = "Total Trials",
+#     negative_count = "Trials Negative ICC",
+#     negative_pct = "Percent Negative"
+#   ) |>
+#   data_color(
+#     column = icc,
+#     target_columns = everything(),
+#     method = "factor",
+#     palette = "RColorBrewer::Blues"
+#   ) #|> 
+ # gtsave("negative_ICC_rates_ordinal_fixed.png")
+```
+
+Combine descriptives to make less figures
+
+```{r}
+dplot <- left_join(errors, negative_summary) |>
   gt() |>
-  my_gt_theme() |>
-  tab_header(
-    title = "Negative ICC Rates (Ordinal Data)",
-    subtitle = "Comparing Across Method and ICC-Type"
-  ) |>
+  my_gt_theme() |> 
+  #apa guidlines say do the titles in word
+  # tab_header(
+  #   title = "Simulation Failure and Negative ICC Rates (Ordinal Data)",
+  #   subtitle = "Comparing Across Method and ICC Type"
+  # ) |>
   # Format the percentage column (adds the % sign and rounds to 1 decimal)
   fmt_percent(
-    columns = negative_pct,
-    scale_values = FALSE, 
+    columns = c(percent_error, negative_pct),
+    scale_values = FALSE,
     decimals = 2
   ) |>
   # Make the column names look professional
   cols_label(
     method = "Method",
     icc = "ICC Type",
-    total_trials = "Total Trials",
-    negative_count = "Trials Negative ICC",
-    negative_pct = "Percent Negative"
+    total_trials = "Total N",
+    invalid_trials = "Invalid N",
+    percent_error = "Percent N",
+    negative_count = "Negative ICC (N)",
+    negative_pct = "Percent Negative (N)"
   ) |>
   data_color(
     column = icc,
     target_columns = everything(),
     method = "factor",
-    palette = "RColorBrewer::Blues"
-  ) #|> 
- # gtsave("negative_ICC_rates_ordinal_fixed.png")
+    palette = "RColorBrewer::Greys"
+  ) |> 
+   gtsave("all_descriptives_ordinal_full.png")
 ```
 
 # 3. Performance Measures for Point Estimators
@@ -646,6 +682,32 @@ Save boxplots
 
 ```
 
+save into supplementals
+
+```{r}
+# output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/ordinal/"
+
+# # Create the directory if it doesn't exist
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# # Walk through the list by its names to save each plot
+# walk(mae_boxplots, ~ {
+#   this_data <- .x$data
+
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #icc_p <- as.character(unique(this_data$p))
+#   file_path <- file.path(output_dir, paste0(icc_dir, "_maeboxplot_onE.png"))
+  
+#   ggsave(
+#     filename = file_path, 
+#     plot = .x, 
+#     width = 12, 
+#     height = 8, 
+#     dpi = 300
+#   )
+# })
+```
+
 ### MAE Aggregated plots 
 
 Average over factors
@@ -757,7 +819,31 @@ Save individual faceted plots
 
 ```
 
+save into supplmentals
 
+```{r}
+# output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/ordinal/"
+
+# # Create the directory if it doesn't exist
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# # Walk through the list by its names to save each plot
+# walk(mm_plots, ~ {
+#   this_data <- .x$data
+
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #icc_p <- as.character(unique(this_data$p))
+#   file_path <- file.path(output_dir, paste0(icc_dir, "_percentbias_overKoverE.png"))
+  
+#   ggsave(
+#     filename = file_path, 
+#     plot = .x, 
+#     width = 12, 
+#     height = 8, 
+#     dpi = 300
+#   )
+# })
+```
 
 ### Muthen & Muthen Aggregated plots 
 
@@ -839,6 +925,31 @@ save rmse plots
 
 ```
 
+save into supplementals
+
+```{r}
+output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/ordinal/"
+
+# Create the directory if it doesn't exist
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# Walk through the list by its names to save each plot
+walk(mm_plots, ~ {
+  this_data <- .x$data
+
+  icc_dir <- as.character(unique(this_data$icc))
+  #icc_p <- as.character(unique(this_data$p))
+  file_path <- file.path(output_dir, paste0(icc_dir, "rmse_overKoverE.png"))
+  
+  ggsave(
+    filename = file_path, 
+    plot = .x, 
+    width = 12, 
+    height = 8, 
+    dpi = 300
+  )
+})
+```
 
 ### RMSE Aggregated plots 
 Aggregated RMSE plots 

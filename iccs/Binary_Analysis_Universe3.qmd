@@ -177,34 +177,34 @@ errors <- dat_full |>
 ```
 
 ```{r}
-errors %>%
-  gt() %>%
-  #apply apa style formatting
-  my_gt_theme() %>%
-  tab_header(
-    title = md("*Simulation Failure Rates (Binary Data)*"),
-    subtitle = md("**Comparing Across Method and ICC Type**")
-  ) %>%
-  # Format the percentage column (adds the % sign and rounds to 1 decimal)
-  fmt_percent(
-    columns = percent_error,
-    scale_values = FALSE, # Set to FALSE because you already multiplied by 100!
-    decimals = 2
-  ) %>%
-  # Make the column names look professional
-  cols_label(
-    method = "Method",
-    icc = "ICC Type",
-    total_trials = "Total Trials",
-    invalid_trials = "Invalid Trials",
-    percent_error = "Percent Error"
-  ) %>% 
-  data_color(
-    column = icc,
-    target_columns = everything(),
-    method = "factor",
-    palette = "RColorBrewer::Blues"
-  ) #|>
+# errors %>%
+#   gt() %>%
+#   #apply apa style formatting
+#   my_gt_theme() %>%
+#   tab_header(
+#     title = md("*Simulation Failure Rates (Binary Data)*"),
+#     subtitle = md("**Comparing Across Method and ICC Type**")
+#   ) %>%
+#   # Format the percentage column (adds the % sign and rounds to 1 decimal)
+#   fmt_percent(
+#     columns = percent_error,
+#     scale_values = FALSE, # Set to FALSE because you already multiplied by 100!
+#     decimals = 2
+#   ) %>%
+#   # Make the column names look professional
+#   cols_label(
+#     method = "Method",
+#     icc = "ICC Type",
+#     total_trials = "Total Trials",
+#     invalid_trials = "Invalid Trials",
+#     percent_error = "Percent Error"
+#   ) %>% 
+#   data_color(
+#     column = icc,
+#     target_columns = everything(),
+#     method = "factor",
+#     palette = "RColorBrewer::Blues"
+#   ) #|>
   #gtsave("failure_rates_binary.png")
 ```
 
@@ -226,35 +226,72 @@ negative_summary <- dat_full |>
   ))
   
 
-negative_summary %>%
-  gt() %>%
-  my_gt_theme() %>%
-  tab_header(
-    title = "Negative ICC Rates (Binary Data)",
-    subtitle = "Comparing Across Method and ICC-Type"
-  ) %>%
+# negative_summary %>%
+#   gt() %>%
+#   my_gt_theme() %>%
+#   tab_header(
+#     title = "Negative ICC Rates (Binary Data)",
+#     subtitle = "Comparing Across Method and ICC-Type"
+#   ) %>%
+#   # Format the percentage column (adds the % sign and rounds to 1 decimal)
+#   fmt_percent(
+#     columns = negative_pct,
+#     scale_values = FALSE, # Set to FALSE because you already multiplied by 100!
+#     decimals = 2
+#   ) %>%
+#   # Make the column names look professional
+#   cols_label(
+#     method = "Method",
+#     icc = "ICC Type",
+#     total_trials = "Total Trials",
+#     negative_count = "Trials Negative ICC",
+#     negative_pct = "Percent Negative"
+#   ) %>% 
+#   data_color(
+#     column = icc,
+#     target_columns = everything(),
+#     method = "factor",
+#     palette = "RColorBrewer::Blues"
+#   ) #|> 
+  #gtsave("negative_rates_binary.png")
+```
+
+combine descriptives
+
+```{r}
+dplot <- left_join(errors, negative_summary) |>
+  gt() |>
+  my_gt_theme() |> 
+  #apa guidlines say do the titles in word
+  # tab_header(
+  #   title = "Simulation Failure and Negative ICC Rates (Ordinal Data)",
+  #   subtitle = "Comparing Across Method and ICC Type"
+  # ) |>
   # Format the percentage column (adds the % sign and rounds to 1 decimal)
   fmt_percent(
-    columns = negative_pct,
-    scale_values = FALSE, # Set to FALSE because you already multiplied by 100!
+    columns = c(percent_error, negative_pct),
+    scale_values = FALSE,
     decimals = 2
-  ) %>%
+  ) |>
   # Make the column names look professional
   cols_label(
     method = "Method",
     icc = "ICC Type",
-    total_trials = "Total Trials",
-    negative_count = "Trials Negative ICC",
-    negative_pct = "Percent Negative"
-  ) %>% 
+    total_trials = "Total N",
+    invalid_trials = "Invalid N",
+    percent_error = "Percent N",
+    negative_count = "Negative ICC (N)",
+    negative_pct = "Percent Negative (N)"
+  ) |>
   data_color(
     column = icc,
     target_columns = everything(),
     method = "factor",
-    palette = "RColorBrewer::Blues"
-  ) #|> 
-  #gtsave("negative_rates_binary.png")
+    palette = "RColorBrewer::Greys"
+  # ) |> 
+  #  gtsave("all_descriptives_binary_full.png")
 ```
+
 
 # 3. Performance Measures for Point Estimators
 Here, we consider performance measures for point estimators for each of the 162 ordinal conditions. 
@@ -453,7 +490,7 @@ plot_aggregated_facet <- function(data, var_name, bias_type, lab_type) {
 
 
 # 3.1 Bias (Mean Absolute Error)
-
+- MAE individual plots not going to be in paper at all
 ### MAE Individual plots (collapsed over probability )
 probability is shown separately in boxplots 
 ```{r}
@@ -487,7 +524,7 @@ mae_plots
 
 ```
 
-Save MAE plots 
+Save MAE plots (all)
 
 ```{r}
 #Walk through the plots and save them in organized subdirectories
@@ -508,6 +545,34 @@ Save MAE plots
 #   ggsave(file_name, plot = .x, width = 12, height = 9)
 # })
 
+```
+
+Save MAE plots (supplementals only)
+
+```{r}
+#mae_plots <- mae_plots[-1]
+#Walk through the plots and save them in organized subdirectories
+# output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/"
+
+# # Create the directory if it doesn't exist
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# # Walk through the list by its names to save each plot
+# walk(mae_plots, ~ {
+#   this_data <- .x$data
+
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #icc_p <- as.character(unique(this_data$p))
+#   file_path <- file.path(output_dir, paste0(icc_dir, "_mae_overP.png"))
+  
+#   ggsave(
+#     filename = file_path, 
+#     plot = .x, 
+#     width = 12, 
+#     height = 8, 
+#     dpi = 300
+#   )
+# })
 ```
 
 #### Boxplots 
@@ -578,7 +643,31 @@ mae_boxplots <- bias %>%
 
 ```
 
+save into supplmentals
 
+```{r}
+# output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/"
+
+# # Create the directory if it doesn't exist
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# # Walk through the list by its names to save each plot
+# walk(mae_boxplots, ~ {
+#   this_data <- .x$data
+
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #icc_p <- as.character(unique(this_data$p))
+#   file_path <- file.path(output_dir, paste0(icc_dir, "_boxplots_onP.png"))
+  
+#   ggsave(
+#     filename = file_path, 
+#     plot = .x, 
+#     width = 12, 
+#     height = 8, 
+#     dpi = 300
+#   )
+# })
+```
 
 
 #### Aggregated plots 
@@ -730,6 +819,31 @@ mm_plots
 #   ggsave(file_name, plot = .x, width = 12, height = 9)
 # })
 ```
+supplmentals only
+```{r}
+# mm_plots <- mm_plots[-1] #only three plots
+# output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/"
+
+# # Create the directory if it doesn't exist
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# # Walk through the list by its names to save each plot
+# walk(mm_plots, ~ {
+#   this_data <- .x$data
+
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #icc_p <- as.character(unique(this_data$p))
+#   file_path <- file.path(output_dir, paste0(icc_dir, "_percentbias_overP.png"))
+  
+#   ggsave(
+#     filename = file_path, 
+#     plot = .x, 
+#     width = 12, 
+#     height = 8, 
+#     dpi = 300
+#   )
+# })
+```
 
 
 ## 3.4 Root Mean Square Error (RMSE)
@@ -793,7 +907,31 @@ Save RMSE plots
 # })
 
 ```
+Save into supplmentals
 
+```{r}
+# output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/"
+
+# # Create the directory if it doesn't exist
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# # Walk through the list by its names to save each plot
+# walk(rmse_plots, ~ {
+#   this_data <- .x$data
+
+#   icc_dir <- as.character(unique(this_data$icc))
+#   #icc_p <- as.character(unique(this_data$p))
+#   file_path <- file.path(output_dir, paste0(icc_dir, "_rmse_overP.png"))
+  
+#   ggsave(
+#     filename = file_path, 
+#     plot = .x, 
+#     width = 12, 
+#     height = 8, 
+#     dpi = 300
+#   )
+# })
+```
 
 ## 2.2 Precision: Standard Error  (SD of the simulation distribution) 
 We can assess the precision of the generalized ICC compared to the traditional ICC and AOV based ICC by comparing the standard deviation of the simulation distribution
