@@ -208,14 +208,7 @@ plot_multi_facet_correlation <- function(data,
 DIR <-  "~/Documents/Github/MastersThesis/iccs/data/universe_3_5/"
 ```
 
-
-The complete simulations required two post-hoc re-runs
-
-Rerun #1: Including the use of {glmmTMB} alongside of {lme4} for linear mixed model fitting. This was loaded into `dat_nest2`.
-
-Rerun #2: Including fixed ANOVA ICC formulations. This was loaded into `dat_nest3` 
-
-
+All simulation results loaded into `dat_nest`
 ```{r}
 #| code-fold: true 
 
@@ -417,6 +410,8 @@ do.call(calc_icc_test4,test_example_row1) #no round(), less parentheses
 
 ```
 
+
+
 ## TROUBLESHOOTING RESULT: USE either test function #2 or #4
 Conclusion: It is best to NOT round and excessive parenthesis do not matter
 
@@ -436,8 +431,23 @@ mismatches <- dat_full2 |>
   filter(sim_icc != fixed_estimate)
 
 mismatches
+
+
 ```
 
+Super weird mismatch in Row #4
+
+```{r}
+mismatches |> 
+  select(c("sim_icc", "fixed_estimate")) |>
+  slice(1:10) |>
+  gt() |>
+  tab_style(
+    style = cell_fill(color = "red"),
+    locations = cells_body(row = fixed_estimate ==  0.229 ) # Conditional highlighting
+  )
+
+```
 
 
 # 4. Data Wrangling (Part 2)
