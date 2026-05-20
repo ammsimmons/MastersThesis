@@ -144,14 +144,7 @@ rm(dat_nest) # no longer neaded
 rm(dat_nest2) #no longer needed
 rm(dat_nest3) #no longer needed
 
-# Set each condition of the simulations as factors 
-conds <- c("n_raters", "n_objects", "k_category", "icc", "e_category", "icc_type", "condition", "method")
-dat <- dat |> 
-  mutate(across(.cols = all_of(conds), .fns = as.factor))
-dat2 <- dat2 |> 
-  mutate(across(.cols = all_of(conds), .fns = as.factor))
-dat3 <- dat3 |> 
-  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
 
 ```
 
@@ -165,34 +158,6 @@ rm(dat3) # no longer needed
 ```
 
 Critically, datasets were subsetted so that each g_icc() is matched with its corresponding data generating variance (DGP) hyper-parameters
-
-```{r}
-# dat <- dat |>
-#   select(-seed, -filename) |>
-#   filter(
-#     (icc_type == 1 & icc == "ICC(A,1)") |
-#     (icc_type == 2 & icc == "ICC(A,k)") |
-#     (icc_type == 3 & icc == "ICC(C,1)") |
-#     (icc_type == 4 & icc == "ICC(C,k)"))
-
-# dat2 <- dat2 |>
-#   select(-seed, -filename) |>
-#   filter(
-#     (icc_type == 1 & icc == "ICC(A,1)") |
-#     (icc_type == 2 & icc == "ICC(A,k)") |
-#     (icc_type == 3 & icc == "ICC(C,1)") |
-#     (icc_type == 4 & icc == "ICC(C,k)"))
-
-# dat3 <- dat3 |>
-#   select(-seed, -filename) |>
-#   filter(
-#     (icc_type == 1 & icc == "ICC(A,1)") |
-#     (icc_type == 2 & icc == "ICC(A,k)") |
-#     (icc_type == 3 & icc == "ICC(C,1)") |
-#     (icc_type == 4 & icc == "ICC(C,k)"))
-
-```
-
 
 
 
@@ -224,30 +189,92 @@ dat_caa <- bind_rows(dat,dat2) |>
 # Clean up
 rm(dat, dat2)
 
-# REDO AOV ICCs due to issue in ICC(A,k) - Jeff found on May 14th
-
-# aov_fixer <- function(khat, n_objects, MSr, MSo, MSe, type) {
-
-#     case_when( 
-#       as.character(type) == "ICC(A,1)" ~ (MSo - MSe) / (MSo + ((khat - 1) * MSe) + ((khat / n_objects) * (MSr - MSe))),
-#       as.character(type) == "ICC(A,k)" ~ (MSo - MSe) / (MSo + ((MSr - MSe) / n_objects)),
-#       as.character(type) == "ICC(C,1)" ~ (MSo - MSe) / (MSo + ((khat - 1) * MSe)), 
-#       as.character(type) == "ICC(C,k)" ~ (MSo - MSe) / MSo)
-# }
-
-# dat_full_aov <- dat_full |> filter(method == "aov_icc")
-# dat_full_not_aov <- dat_full |> filter(method != "aov_icc")
-
-# rm(dat_full) # save space
-
-
-# dat_full_aov <- dat_full_aov |> 
-#   mutate(estimate = aov_fixer(n_raters, n_objects, vr, vs, vsr, icc))
-
-# dat_full <- bind_rows(dat_full_not_aov, dat_full_aov)
 
 
 ```
+
+
+# TROUBLESHOOT 
+Checking to see ICC formulations are correct 
+
+```{r}
+calculate_icc_metric <- function(model_string, vs, vr, vsr, k) {
+  round(
+   case_when(
+    model_string == "ICC(A,1)" ~ vs / (vs + vr + vsr),  
+    model_string == "ICC(A,k)" ~ (vs) / (vs + ((vr+vsr)/k)),    
+    model_string == "ICC(C,1)" ~ vs / (vs + vsr),              
+    model_string == "ICC(C,k)" ~ (vs) / (vs + (vsr/k)),  
+    TRUE                       ~ NA_real_                      
+  ),
+  digits = 3)
+
+}
+
+calculate_icc_bytype <- function(model_string, vs, vr, vsr, k) {
+
+  model_string <- as.character(model_string)
+
+  round(
+   case_when(
+    model_string == "1" ~ vs / (vs + vr + vsr),  
+    model_string == "2" ~ (vs) / (vs + ((vr+vsr)/k)),    
+    model_string == "3" ~ vs / (vs + vsr),              
+    model_string == "4" ~ (vs) / (vs + (vsr/k)),  
+    TRUE                       ~ NA_real_                      
+  ),
+  digits = 3)
+
+}
+
+
+calculate_before_fix <- function(model_string, vs, vr, vsr, k) {
+
+  model_string <- as.character(model_string)
+
+
+   case_when(
+    model_string == "1" ~ vs / (vs + vr + vsr),  
+    model_string == "2" ~ (vs) / (vs + ((vr+vsr)/k)),    
+    model_string == "3" ~ vs / (vs + vsr),              
+    model_string == "4" ~ (vs) / (vs + (vsr/k)),  
+    TRUE                       ~ NA_real_                      
+  )
+
+}
+
+# found errors in the simulation math!? 
+
+dat_full2 <- dat_full |>
+  mutate(
+    # This creates a brand new column with the correct math applied row-by-row
+    computed_icc_by_icc = calculate_icc_metric(icc, vs, vr, vsr, n_raters), 
+    computed_icc_by_type = calculate_icc_bytype(icc_type, vs, vr, vsr, n_raters),
+    sim_icc = estimate, 
+  ) 
+
+
+mismatches <- dat_full2 |>
+  filter(sim_icc != computed_icc_by_type)
+
+#rm(dat_full2)
+#rm(mismatches)
+```
+
+replace simulation icc estimates with corrected iccs
+```{r}
+dat_full <- dat_full |>
+  mutate(estimate = calculate_icc_bytype(icc_type, vs, vr, vsr, n_raters))
+
+
+#set conditions as factors 
+conds <- c("n_raters", "n_objects", "k_category", "e_category", "icc_type", "condition", "method","icc")
+dat_full <- dat_full |> 
+  mutate(across(.cols = all_of(conds), .fns = as.factor))
+
+
+```
+
 
 # 2. Descriptives 
 
@@ -382,19 +409,28 @@ dplot <- left_join(errors, negative_summary) |>
   cols_label(
     method = "Method",
     icc = "ICC Type",
-    total_trials = "Total N",
-    invalid_trials = "Invalid N",
-    percent_error = "Percent N",
+    total_trials = "Total (N)",
+    invalid_trials = "Non-Convergence (N)",
+    percent_error = " % Non-Convergence",
     negative_count = "Negative ICC (N)",
-    negative_pct = "Percent Negative (N)"
+    negative_pct = "% Negative"
   ) |>
   data_color(
     column = icc,
     target_columns = everything(),
     method = "factor",
     palette = "RColorBrewer::Greys"
-  ) |> 
-   gtsave("all_descriptives_ordinal_full.png")
+  ) |>
+  tab_style(
+    style = cell_borders(
+      sides = c("left","right"), 
+      color = "black", 
+      weight = px(1),
+      style = "solid"
+    ),
+    locations = cells_body(columns = c("percent_error", "negative_pct"))
+    ) #|> 
+    #   gtsave("all_descriptives_ordinal_full.png")
 ```
 
 # 3. Performance Measures for Point Estimators
@@ -629,6 +665,7 @@ Boxplots
 
 ```{r}
 plot_icc_boxplots <- function(data, icc_label) {
+  
   ggplot(data, aes(x = factor(k_category), y = bias2, fill = Method)) +
     # Draw boxplots for each method side-by-side
     geom_boxplot(outliers = FALSE, outlier.size = 0.5, alpha = 0.7, outlier.shape = NA) +
@@ -682,7 +719,6 @@ Save boxplots
 
 ```
 
-save into supplementals
 
 ```{r}
 # output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/supplementals/ordinal/"
@@ -706,6 +742,118 @@ save into supplementals
 #     dpi = 300
 #   )
 # })
+```
+
+
+## final boxplots 
+Fix after getting J.M. feedback on Revision #1 (May 18)
+
+```{r}
+plot_revised_boxplots <- function(data, x_factor) {
+
+   clean_label <- function(var_name) {
+    case_when(
+      var_name == "n_raters"   ~ "Number of Raters",
+      var_name == "n_objects"  ~ "Number of Objects",
+      var_name == "target_icc" ~ "Target ICC Value",
+      var_name == "k_category" ~ "Number of Categories (K)",
+      var_name == "e_category" ~ "Equality of Categories",
+      var_name == "bias2"      ~ "Percent Bias",
+      TRUE                     ~ var_name
+    )
+   }
+
+   # add monte carlo standard error layer
+  mcse_bounds <- data |>
+    group_by(.data[[x_factor]], Method, icc) |>
+    summarize(
+      mid_point = median(bias2), 
+      avg_mcse = sqrt(mean(bias2_mcse^2)), 
+      .groups = "drop")
+  
+  fixed_dodge <- position_dodge(width = 0.75)
+
+  # FIX: Use .data[[x_factor]] to process the incoming string name safely
+   #layer the MCSE bars first
+  ggplot(data) +
+    # Layer 1: Background MCSE Bars (Shows the execution/sampling noise layer)
+  geom_linerange(
+      data = mcse_bounds,
+      aes(
+        x = factor(.data[[x_factor]]), 
+        ymin = mid_point - avg_mcse, 
+        ymax = mid_point + avg_mcse,
+        group = Method
+      ),
+      color = "purple", linewidth = 4, position = fixed_dodge, 
+      alpha = 1) +
+  geom_boxplot(aes(x = factor(.data[[x_factor]]), 
+  y = bias2, fill = Method), 
+  outliers = TRUE, outlier.size = 0.5, 
+  alpha = 0.7, outlier.shape = NA,
+  position = fixed_dodge
+  ) +
+  facet_wrap(vars(icc), labeller = label_both) +
+    labs(
+      #title = "Bias Analysis (Ordinal)",
+      # Dynamically evaluate the clean label based on the specific loop iteration
+      x = clean_label(x_factor), 
+      y = clean_label("bias2"),
+      fill = "Method"
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom") + 
+    geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
+    geom_hline(yintercept = -0.10, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = 0.10, color = "red", linetype = "dashed") +
+    annotate(
+    "label", 
+    x = Inf, y = Inf, # Places it precisely in the top-right corner
+    label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 5)),
+    vjust = 1.5, hjust = 1.1, 
+    fill = "white", alpha = 0.8, size = 3, fontface = "italic"
+  ) 
+}
+
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category") 
+
+# FIX: Added '~' before the function call so R evaluates '.x' loop by loop
+mm_boxplots <- map(set_names(factors_to_test), ~ {
+  plot_revised_boxplots(
+    data = bias, 
+    x_factor = .x
+  )
+})
+
+
+
+```
+
+
+save into supplementals
+
+```{r}
+output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/boxplots_plots/ordinal/PercentBias/faceted/"
+
+# Create the directory if it doesn't exist
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# Walk through the list by its names to save each plot
+walk(names(mm_boxplots), ~ {
+  #this_data <- .x$data
+
+ # icc_dir <- as.character(unique(this_data$icc))
+  #icc_p <- as.character(unique(this_data$p))
+  file_path <- file.path(output_dir, paste0("boxplot2_over_", .x, ".png"))
+  
+  ggsave(
+    filename = file_path, 
+    plot = mm_boxplots[[.x]], 
+    width = 12, 
+    height = 8, 
+    dpi = 300
+  )
+})
 ```
 
 ### MAE Aggregated plots 
@@ -1073,10 +1221,15 @@ Create plot
 # Define the factors you want to loop through
 factors_to_analyze <- c("kappa_adj", "s_bp_adj")
 
+# only include a1 and c1
+
+dat_a1c1 <- dat_avg |>
+  filter(icc_type == "ICC(A,1)" | icc_type == "ICC(C,1)") 
+
 # Generate the plots
 hyper_cor_plots <- map(set_names(factors_to_analyze), ~ {
   plot_multi_facet_correlation(
-    data = dat_avg, 
+    data = dat_a1c1, 
     caa_metric = .x,
   )
 })
