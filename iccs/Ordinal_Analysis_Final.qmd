@@ -643,7 +643,7 @@ mm_boxplots
 Create ICC & CAA averages across simulation conditions 
 ```{r}
 dat_avg <- dat_caa |>
-  filter(method != "icc") |> # Makes it easier to assess LMM since so similar 
+  #filter(method != "icc") |> # Makes it easier to assess LMM since so similar 
   summarize(
     mean_estimate = mean(estimate), 
     .by = c(n_raters, n_objects, target_icc, icc, k_category, e_category, icc_type, condition, method)
