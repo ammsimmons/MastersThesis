@@ -38,7 +38,7 @@ params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03122026 + 17 * 1:n(), #set seed for each row
     condition = 1:n() * 1,
-    filename = paste0("iccs/data/ordinal_Uthree5_aov_",condition,"_",seed,".rds")
+    filename = paste0("iccs/data/ordinal_UFour_",condition,"_",seed,".rds")
   )
 
 
@@ -47,7 +47,7 @@ params <- expand_grid( !!!design_factors) |>
 tictoc::tic()
 future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_ANOVA_ordinal(params, iter, writeFiles=FALSE)
+sim_results <- vardel::run_ANOVA_ordinal(params, iter, writeFiles=TRUE)
 tictoc::toc()
 
 
