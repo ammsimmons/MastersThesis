@@ -1,7 +1,7 @@
 ---
-title: "Ordinal Analysis Final"
+title: "Ordinal Analysis Final (w/o CIs)"
 author: Simmons & Girard
-date: May 19, 2026
+date: May 20, 2026
 theme: flatly
 format:
   html:
@@ -205,15 +205,8 @@ plot_multi_facet_correlation <- function(data,
 # Load Data 
 
 ```{r}
-DIR <-  "~/Documents/Github/MastersThesis/iccs/data/universe_3/"
+DIR <-  "~/Documents/Github/MastersThesis/iccs/data/universe_4/"
 ```
-
-
-The complete simulations required two post-hoc re-runs
-
-Rerun #1: Including the use of {glmmTMB} alongside of {lme4} for linear mixed model fitting. This was loaded into `dat_nest2`.
-
-Rerun #2: Including fixed ANOVA ICC formulations. This was loaded into `dat_nest3` 
 
 
 ```{r}
@@ -235,19 +228,19 @@ params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03122026 + 17 * 1:n(), #set seed for each row,
     condition = 1:n() * 1,
-    filename = paste0("ordinal_UThree_",condition,"_",seed,".rds"))
+    filename = paste0("ordinal_Ufour_",condition,"_",seed,".rds"))
 
 dat_nest <- nest_rds_files(params, "filename", DIR)
 
-params2 <- params |> 
-  select(-filename) |>
-  mutate(filename = paste0(
-    "ordinal_onlyglmmtmb_",condition,"_",seed,".rds"))
+# params2 <- params |> 
+#   select(-filename) |>
+#   mutate(filename = paste0(
+#     "ordinal_onlyglmmtmb_",condition,"_",seed,".rds"))
   
-#glmmtmb linear fits only 
-dat_nest2 <- nest_rds_files(params2, "filename", DIR)
+# #glmmtmb linear fits only 
+# dat_nest2 <- nest_rds_files(params2, "filename", DIR)
 
-dat_nest3 <- readRDS("~/Documents/Github/MastersThesis/iccs/data/fullsets/ordinal_Uthree5_AOV.rds")
+# dat_nest3 <- readRDS("~/Documents/Github/MastersThesis/iccs/data/fullsets/ordinal_Uthree5_AOV.rds")
 ```
 
 # 2. Data Wrangling (Part 1)
@@ -257,23 +250,23 @@ Here, I  unnested the entire simulation sets to obtain the full data
 #| code-fold: true
 
 dat <- dat_nest |> unnest(result)
-dat2 <- dat_nest2 |> unnest(result) #only linear *not generalized* glmmsTMB fits
-dat3 <- dat_nest3 |> unnest(result) #only fixed AOV fits (J.G. fix)
+# dat2 <- dat_nest2 |> unnest(result) #only linear *not generalized* glmmsTMB fits
+# dat3 <- dat_nest3 |> unnest(result) #only fixed AOV fits (J.G. fix)
 
 # Delete nested object
 rm(dat_nest) # no longer neaded 
-rm(dat_nest2) #no longer needed
-rm(dat_nest3) #no longer needed
+# rm(dat_nest2) #no longer needed
+# rm(dat_nest3) #no longer needed
 
 ```
 
 Need to replace the AOV fits in `dat` with `dat3` (thanks to J.G. Fix)
 ```{r}
-dat <- dat |> 
-  filter(method != "aov_icc") |>
-  bind_rows(dat3) #dat3 only contains fixed "aov_icc"
+# dat <- dat |> 
+#   filter(method != "aov_icc") |>
+#   bind_rows(dat3) #dat3 only contains fixed "aov_icc"
 
-rm(dat3) # no longer needed
+# rm(dat3) # no longer needed
 ```
 
 Critically, datasets were subsetted so that each g_icc() is matched with its corresponding data generating variance (DGP) hyper-parameters
@@ -282,7 +275,8 @@ Critically, datasets were subsetted so that each g_icc() is matched with its cor
 #| code-fold: true
 
 # for point-estimate analyses, combine first with dat2 
-dat_full <- bind_rows(dat, dat2) |>
+#dat_full <- bind_rows(dat, dat2) |>
+dat_full <- dat |>
   select(-seed, -filename) |>
   filter(
     (icc_type == 1 & icc == "ICC(A,1)") |
@@ -292,13 +286,14 @@ dat_full <- bind_rows(dat, dat2) |>
 
 
 # for CAA analysis 
-dat_caa <- bind_rows(dat,dat2) |> 
+#dat_caa <- bind_rows(dat,dat2) |>
+dat_caa <- dat |>
   select(-seed, -filename) |> 
   filter(is.na(icc)) |> #select only caa measures 
   bind_rows(dat_full) # match ICCs with correct DGP 
 
 # Clean up
-rm(dat, dat2)
+rm(dat)
 
 ```
 
@@ -472,7 +467,7 @@ mismatches
 
 Replace simulation icc estimates with corrected icc estimates (see troubleshooting above), and set factors
 ```{r}
-#clean up 
+# #clean up 
 rm(dat_full2)
 rm(mismatches)
 
@@ -509,8 +504,8 @@ errors <- dat_full |>
   ) |>
   arrange(icc) |> 
   mutate(method = fct_recode(method, 
-  "LMM {lme4}" = "icc",
-  "LMM {glmmtmb}" = "icc_glmmtmb",
+ # "LMM {lme4}" = "icc",
+  "LMM {glmmtmb}" = "icc",
   "GLMM {ordinal}" = "g_icc", 
   "ANOVA {stats}" = "aov_icc", 
   ))
@@ -533,8 +528,8 @@ negative_summary <- dat_full |>
   ) |>
   arrange(icc) |> 
   mutate(method = fct_recode(method, 
-  "LMM {lme4}" = "icc",
-  "LMM {glmmtmb}" = "icc_glmmtmb",
+  #"LMM {lme4}" = "icc",
+  "LMM {glmmtmb}" = "icc",
   "GLMM {ordinal}" = "g_icc", 
   "ANOVA {stats}" = "aov_icc", 
   ))
@@ -597,7 +592,7 @@ Calculate Bias, RMSE and their Monte Carlo Standard Errors (MCSEs)
 bias <- dat_full |>
   # some NA (4) in g-ICC(C,k) and negative aov_iccs 
   # filter(estimate >= 0 )|>
-  filter(method != "icc") |> # Makes it easier to assess LMM-ICCs since so similar 
+ # filter(method != "icc") |> # Makes it easier to assess LMM-ICCs since so similar 
   summarize(
     simhelpers::calc_absolute( 
       estimates = estimate, true_param = target_icc, 
@@ -608,8 +603,8 @@ bias <- dat_full |>
   mutate(bias2 = bias/target_icc) |> #Muthen&Muthen
   mutate(bias2_mcse = bias_mcse/target_icc) |> #Muthen&Muthen
   mutate(Method = fct_recode(method, 
-    "LMM {lme4}" = "icc",
-    "LMM {glmmtmb}" = "icc_glmmtmb",
+   # "LMM {lme4}" = "icc",
+    "LMM {glmmtmb}" = "icc",
     "GLMM {ordinal}" = "g_icc", 
     "ANOVA {lm}" = "aov_icc", )
   ) |> 
