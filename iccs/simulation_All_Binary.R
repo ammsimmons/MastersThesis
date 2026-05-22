@@ -31,7 +31,7 @@ target_icc = c(0.40,0.60,0.80),
 p = c(0.5, 0.8), # for the binary case
 icc_type = c(1,2,3,4)
 ) 
-iter <- 1000
+iter <- 3
 # params <- expand_grid( !!!design_factors) %>%
 #   mutate(
 #     SEED = 02112026 + 17 * 1:n() #set seed for each row 
@@ -41,7 +41,7 @@ params <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03022026 + 17 * 1:n(), #set seed for each row
     condition = 1:n() * 1,
-    filename = paste0("iccs/data/binary_UThree5_",condition,"_",seed,".rds")
+    filename = paste0("iccs/data/universe_4/binary_Ufour_",condition,"_",seed,".rds")
   )
 
 # # Find errored conditions and rerun 
@@ -59,7 +59,7 @@ params <- expand_grid( !!!design_factors) |>
 # SEED <- params$SEED 
 
 tictoc::tic()
-future::plan(multisession, workers = 22)
+future::plan(multisession, workers = 6)
 #future::plan(sequential)
 sim_results <- vardel::run_all_binary(params, iter, writeFiles=TRUE)
 tictoc::toc()
