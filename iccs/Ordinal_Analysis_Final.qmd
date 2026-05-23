@@ -1,7 +1,7 @@
 ---
-title: "Ordinal Analysis Final (w/o CIs)"
+title: "Ordinal Analysis Final"
 author: Simmons & Girard
-date: May 20, 2026
+date: May 22, 2026
 theme: flatly
 format:
   html:
@@ -146,6 +146,74 @@ plot_revised_boxplots <- function(data, x_factor) {
   ) 
 }
 
+plot_coverage_boxplots <- function(data, x_factor) {
+
+   clean_label <- function(var_name) {
+    case_when(
+      var_name == "n_raters"   ~ "Number of Raters",
+      var_name == "n_objects"  ~ "Number of Objects",
+      var_name == "target_icc" ~ "Target ICC Value",
+      var_name == "k_category" ~ "Number of Categories (K)",
+      var_name == "e_category" ~ "Equality of Categories",
+      var_name == "bias2"      ~ "Percent Bias",
+      var_name == "coverage"   ~ "Coverage",
+      var_name == "p" ~ "Probability",
+      TRUE                     ~ var_name
+    )
+   }
+
+   # add monte carlo standard error layer
+  mcse_bounds <- data |>
+    group_by(.data[[x_factor]], Method, icc) |>
+    summarize(
+      mid_point = median(coverage), 
+      avg_mcse = sqrt(mean(coverage_mcse^2)), 
+      .groups = "drop")
+  
+  fixed_dodge <- position_dodge(width = 0.75)
+
+  # FIX: Use .data[[x_factor]] to process the incoming string name safely
+   #layer the MCSE bars first
+  ggplot(data) +
+    # Layer 1: Background MCSE Bars (Shows the execution/sampling noise layer)
+  geom_linerange(
+      data = mcse_bounds,
+      aes(
+        x = factor(.data[[x_factor]]), 
+        ymin = mid_point - avg_mcse, 
+        ymax = mid_point + avg_mcse,
+        group = Method
+      ),
+      color = "purple", linewidth = 4, position = fixed_dodge, 
+      alpha = 1) +
+  geom_boxplot(aes(x = factor(.data[[x_factor]]), 
+  y = coverage, fill = Method), 
+  outliers = TRUE, outlier.size = 0.5, 
+  alpha = 0.7, outlier.shape = NA,
+  position = fixed_dodge
+  ) +
+  facet_wrap(vars(icc), labeller = label_both) +
+    labs(
+      #title = "Bias Analysis (Ordinal)",
+      # Dynamically evaluate the clean label based on the specific loop iteration
+      x = clean_label(x_factor), 
+      y = clean_label("coverage"),
+      fill = "Method"
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom") + 
+    geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
+    geom_hline(yintercept = 0.95, color = "black", linetype = "dashed") +
+    annotate(
+    "label", 
+    x = Inf, y = Inf, # Places it precisely in the top-right corner
+    label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 5)),
+    vjust = 1.5, hjust = 1.1, 
+    fill = "white", alpha = 0.8, size = 3, fontface = "italic"
+  ) 
+}
+
+
 plot_multi_facet_correlation <- function(data, 
                                         # col_factor,
                                         caa_metric = "kappa_adj", 
@@ -241,6 +309,17 @@ dat_nest <- nest_rds_files(params, "filename", DIR)
 # dat_nest2 <- nest_rds_files(params2, "filename", DIR)
 
 # dat_nest3 <- readRDS("~/Documents/Github/MastersThesis/iccs/data/fullsets/ordinal_Uthree5_AOV.rds")
+```
+
+# Universe 4 erros 
+
+```{r}
+dat_rerun <- dat_nest |>
+  filter(map_lgl(result, is.null))
+
+dat_nest <- dat_nest |>
+  filter(!map_lgl(result, is.null))
+
 ```
 
 # 2. Data Wrangling (Part 1)
@@ -468,12 +547,12 @@ mismatches
 Replace simulation icc estimates with corrected icc estimates (see troubleshooting above), and set factors
 ```{r}
 # #clean up 
-rm(dat_full2)
-rm(mismatches)
+# rm(dat_full2)
+# rm(mismatches)
 
 # fix ICCs 
-dat_full <- dat_full |>
-  mutate(estimate = calc_icc_test4(icc_type, vs, vr, vsr, n_raters))
+# dat_full <- dat_full |>
+#   mutate(estimate = calc_icc_test4(icc_type, vs, vr, vsr, n_raters))
 
 
 #set conditions as factors 
@@ -500,7 +579,7 @@ errors <- dat_full |>
     percent_error = mean(is_invalid, na.rm = TRUE) * 100,
     .by = c(method,icc)
   ) |>
-  arrange(match(method, c("icc","icc_glmmtmb", "g_icc","aov_icc"))
+  arrange(match(method, c("icc", "g_icc","aov_icc"))
   ) |>
   arrange(icc) |> 
   mutate(method = fct_recode(method, 
@@ -524,7 +603,7 @@ negative_summary <- dat_full |>
     .by = c(method,icc), 
     negative_pct = mean(estimate < 0, na.rm = TRUE)
   ) |>
-  arrange(match(method, c("icc","icc_glmmtmb", "g_icc","aov_icc"))
+  arrange(match(method, c("icc", "g_icc","aov_icc"))
   ) |>
   arrange(icc) |> 
   mutate(method = fct_recode(method, 
@@ -578,7 +657,7 @@ dplot <- left_join(errors, negative_summary) |>
     ),
     locations = cells_body(columns = c("percent_error", "negative_pct"))
     ) #|> 
-    #   gtsave("all_descriptives_ordinal_full.png")
+      # gtsave("all_descriptives_ordinal_full.png")
 
 dplot
 ```
@@ -630,7 +709,187 @@ mm_boxplots <- map(set_names(factors_to_test), ~ {
 mm_boxplots
 ```
 
-# 7. Comparision to CAAs (Correlation Tables)
+```{r}
+# output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/boxplots_plots/ordinal/PercentBias/faceted/"
+
+# Create the directory if it doesn't exist
+# if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# # Walk through the list by its names to save each plot
+# walk(names(mm_boxplots), ~ {
+#   #this_data <- .x$data
+
+#  # icc_dir <- as.character(unique(this_data$icc))
+#   #icc_p <- as.character(unique(this_data$p))
+#   file_path <- file.path(output_dir, paste0("boxplot_over_", .x, ".png"))
+  
+#   ggsave(
+#     filename = file_path, 
+#     plot = mm_boxplots[[.x]], 
+#     width = 12, 
+#     height = 8, 
+#     dpi = 300
+#   )
+# })
+```
+
+# 7. CI and coverage rates
+
+descriptives for CIs
+
+```{r}
+
+testCI<- function(estimate, ci_lower, ci_upper) {
+  # DO NOT ROUND, and use less PARENTHESES 
+  # Parentheses is equivalent to the original {varde} icc formulations
+
+ # icc_type_dgp <- as.character(icc_type_dgp)
+  case_when(
+    estimate <= ci_lower | estimate >= ci_upper ~ FALSE, 
+    estimate >= ci_lower & estimate <= ci_upper ~ TRUE,
+    TRUE                    ~ NA_real_                      
+  )
+}
+
+CI_summary <- dat_full |>
+  # mutate(
+  #   across(.cols = c("message","warning","error"), .fns = as.logical)) |> 
+  mutate(
+    CI_success = is.na(ci_lower),
+    is_invalid = CI_success
+  ) |>
+  # ) |>
+  # mutate( is_invalid = message | warning | error | CI_success) |>
+  summarise(
+    total_trials = n(),
+    invalid_trials = sum(is_invalid, na.rm = TRUE),
+    percent_error = mean(is_invalid, na.rm = TRUE) * 100,
+    .by = c(method,icc)
+  ) |>
+  arrange(match(method, c("icc","g_icc","aov_icc"))
+  ) |>
+  arrange(icc) |> 
+  mutate(method = fct_recode(method, 
+  #"LMM {lme4}" = "icc",
+  "LMM {glmmtmb}" = "icc",
+  "GLMM {ordinal}" = "g_icc", 
+  "ANOVA {stats}" = "aov_icc", 
+  ))
+```
+
+```{r}
+cplot <- CI_summary |>
+  gt() |>
+  my_gt_theme() |> 
+  #apa guidlines say do the titles in word
+  # tab_header(
+  #   title = "Simulation Failure and Negative ICC Rates (Ordinal Data)",
+  #   subtitle = "Comparing Across Method and ICC Type"
+  # ) |>
+  # Format the percentage column (adds the % sign and rounds to 1 decimal)
+  fmt_percent(
+    columns = c(percent_error),
+    scale_values = FALSE,
+    decimals = 2
+  ) |>
+  # Make the column names look professional
+  cols_label(
+    method = "Method",
+    icc = "ICC Type",
+    total_trials = "Total (N)",
+    invalid_trials = "CI Not Estimable (N)",
+    percent_error = " % CI Not Estimable",
+  ) |>
+  data_color(
+    column = icc,
+    target_columns = everything(),
+    method = "factor",
+    palette = "RColorBrewer::Greys"
+  ) |>
+  tab_style(
+    style = cell_borders(
+      sides = c("left","right"), 
+      color = "black", 
+      weight = px(1),
+      style = "solid"
+    ),
+    locations = cells_body(columns = c("percent_error"))
+    ) #|> 
+      # gtsave("all_coverage_ordinal_full.png")
+```
+
+
+
+
+```{r}
+coverage <- dat_full |>
+  summarize(
+  simhelpers::calc_coverage(
+    lower_bound = ci_lower, 
+    upper_bound = ci_upper,
+    true_param = target_icc
+  ), 
+  .by = c(n_raters, n_objects, target_icc, icc, k_category, e_category, icc_type, condition, method)) |>
+  # mutate(bias2 = bias/target_icc) |> #Muthen&Muthen
+  # mutate(bias2_mcse = bias_mcse/target_icc) |> #Muthen&Muthen
+  mutate(Method = fct_recode(method, 
+   #"LMM {lme4}" = "icc",
+    "LMM {glmmtmb}" = "icc",
+    "GLMM {ordinal}" = "g_icc", 
+    "ANOVA {lm}" = "aov_icc", )
+  ) |> 
+  mutate(Objects = n_objects) |> 
+  mutate(`Target ICC` = target_icc) |>
+  mutate(`Category Equality` = e_category) 
+
+
+```
+
+
+
+```{r}
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category") 
+
+# FIX: Added '~' before the function call so R evaluates '.x' loop by loop
+cvrge_boxplots <- map(set_names(factors_to_test), ~ {
+  plot_coverage_boxplots(
+    data = coverage, 
+    x_factor = .x
+  )
+})
+
+cvrge_boxplots
+
+```
+
+save coverage boxplots
+```{r}
+ output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/boxplots_plots/ordinal/Coverage/"
+
+# Create the directory if it doesn't exist
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+# Walk through the list by its names to save each plot
+walk(names(cvrge_boxplots), ~ {
+  #this_data <- .x$data
+
+ # icc_dir <- as.character(unique(this_data$icc))
+  #icc_p <- as.character(unique(this_data$p))
+  file_path <- file.path(output_dir, paste0("boxplot_over_", .x, ".png"))
+  
+  ggsave(
+    filename = file_path, 
+    plot = cvrge_boxplots[[.x]], 
+    width = 12, 
+    height = 8, 
+    dpi = 300
+  )
+})
+
+
+```
+
+# 8. Comparision to CAAs (Correlation Tables)
 
 
 ## Comparison to CAA
@@ -679,13 +938,13 @@ cor_plots <- map(set_names(factors_to_analyze), ~ {
 cor_plots
 
 # Save 
-# output_dir <- "icc_kappa_correlations"
-# if (!dir.exists(output_dir)) dir.create(output_dir)
+output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/caa_correlations/"
+if (!dir.exists(output_dir)) dir.create(output_dir)
 
-# iwalk(hyper_cor_plots, function(p, factor_name) {
-#   ggsave(
-#     file.path(output_dir, paste0("hyper_corr_", factor_name, ".png")), 
-#     plot = p, width = 16, height = 12, dpi = 300
-#   )
-# })
+iwalk(cor_plots, function(p, factor_name) {
+  ggsave(
+    file.path(output_dir, paste0("ordinal_gicc_corr_", factor_name, ".png")), 
+    plot = p, width = 16, height = 12, dpi = 300
+  )
+})
 ```
