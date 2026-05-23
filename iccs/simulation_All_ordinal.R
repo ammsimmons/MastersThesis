@@ -34,18 +34,21 @@ icc_type = c(1,2,3,4))
 iter <- 100
 
 
-param <- expand_grid( !!!design_factors) |>
-    mutate(
-    seed = 03122026 + 17 * 1:n(), #set seed for each row,
-    condition = 1:n() * 1,
-    filename = paste0("iccs/data/universe_4/bad_ordinal_Ufour_",condition,"_",seed,".rds")
-  )
+# param <- expand_grid( !!!design_factors) |>
+#     mutate(
+#     seed = 03122026 + 17 * 1:n(), #set seed for each row,
+#     condition = 1:n() * 1,
+#     filename = paste0("iccs/data/universe_4/bad_ordinal_Ufour_",condition,"_",seed,".rds")
+#   )
 
-##### Selecting Conditions 
+# ##### Selecting Conditions 
 
-# run sim (in portions)
-params_comp1 <- param |>
- filter(condition <= 2) # for fast server 1 
+# # run sim (in portions)
+# params_comp1 <- param |>
+#  filter(condition <= 2) # for fast server 1 
+
+param <- readRDS("~/Documents/Github/MastersThesis/iccs/data/U4_ordinal_rerun.rds") |>
+  select(!c(result))
 
 #params_comp2 <- param |> 
  # filter(condition <= 82) # for fast server 1 
@@ -65,7 +68,7 @@ params_comp1 <- param |>
 tictoc::tic()
 future::plan(multisession, workers = 6)
 #future::plan(sequential)
-sim_results <- vardel::run_all_ordinal(params_comp1, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_ordinal(param, iter, writeFiles=TRUE)
 tictoc::toc()
 
 
