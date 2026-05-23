@@ -31,21 +31,21 @@ target_icc = c(0.40,0.60,0.80),
 k_category = c(3,5,7),
 e_category = c(TRUE,FALSE), # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
 icc_type = c(1,2,3,4)) 
-iter <- 1000
+iter <- 100
 
 
 param <- expand_grid( !!!design_factors) |>
     mutate(
     seed = 03122026 + 17 * 1:n(), #set seed for each row,
     condition = 1:n() * 1,
-    filename = paste0("iccs/data/universe_4/ordinal_Ufour_",condition,"_",seed,".rds")
+    filename = paste0("iccs/data/universe_4/bad_ordinal_Ufour_",condition,"_",seed,".rds")
   )
 
 ##### Selecting Conditions 
 
 # run sim (in portions)
-# params_comp1 <- param |>
-#  filter(condition <= 2) # for fast server 1 
+params_comp1 <- param |>
+ filter(condition <= 2) # for fast server 1 
 
 #params_comp2 <- param |> 
  # filter(condition <= 82) # for fast server 1 
@@ -63,9 +63,9 @@ param <- expand_grid( !!!design_factors) |>
 #####################
 
 tictoc::tic()
-future::plan(multisession, workers = 22)
+future::plan(multisession, workers = 6)
 #future::plan(sequential)
-sim_results <- vardel::run_all_ordinal(param, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_ordinal(params_comp1, iter, writeFiles=TRUE)
 tictoc::toc()
 
 
