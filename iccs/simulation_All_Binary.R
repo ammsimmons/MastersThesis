@@ -31,7 +31,7 @@ target_icc = c(0.40,0.60,0.80),
 p = c(0.5, 0.8), # for the binary case
 icc_type = c(1,2,3,4)
 ) 
-iter <- 3
+iter <- 1000
 # params <- expand_grid( !!!design_factors) %>%
 #   mutate(
 #     SEED = 02112026 + 17 * 1:n() #set seed for each row 
@@ -59,7 +59,7 @@ params <- expand_grid( !!!design_factors) |>
 # SEED <- params$SEED 
 
 tictoc::tic()
-future::plan(multisession, workers = 6)
+future::plan(multisession, workers = 22)
 #future::plan(sequential)
 sim_results <- vardel::run_all_binary(params, iter, writeFiles=TRUE)
 tictoc::toc()
