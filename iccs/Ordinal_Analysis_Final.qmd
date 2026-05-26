@@ -19,6 +19,7 @@ library(gt)
 library(paletteer)
 library(ggpubr)
 library(gtExtras)
+library(patchwork)
 ```
 
 
@@ -139,12 +140,22 @@ plot_revised_boxplots <- function(data, x_factor) {
     geom_hline(yintercept = 0.10, color = "red", linetype = "dashed") +
     annotate(
     "label", 
-    x = Inf, y = Inf, # Places it precisely in the top-right corner
+    x = Inf, y = -0.60, # Places it precisely in the top-right corner
     label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 5)),
     vjust = 1.5, hjust = 1.1, 
     fill = "white", alpha = 0.8, size = 3, fontface = "italic"
   ) 
 }
+
+table_mcse <- function(data, x_factor){
+  mcse_bounds <- data |>
+    group_by(.data[[x_factor]], Method, icc) |>
+    summarize(
+      mid_point = median(bias2), 
+      avg_mcse = sqrt(mean(bias2_mcse^2)), 
+      .groups = "drop")
+}
+  
 
 plot_coverage_boxplots <- function(data, x_factor) {
 
@@ -203,10 +214,10 @@ plot_coverage_boxplots <- function(data, x_factor) {
     theme_bw() +
     theme(legend.position = "bottom") + 
     geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
-    geom_hline(yintercept = 0.95, color = "black", linetype = "dashed") +
+    geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
     annotate(
     "label", 
-    x = Inf, y = Inf, # Places it precisely in the top-right corner
+    x = Inf, y = 0.15, # Places it precisely in the top-right corner
     label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 5)),
     vjust = 1.5, hjust = 1.1, 
     fill = "white", alpha = 0.8, size = 3, fontface = "italic"
@@ -300,15 +311,6 @@ params <- expand_grid( !!!design_factors) |>
 
 dat_nest <- nest_rds_files(params, "filename", DIR)
 
-# params2 <- params |> 
-#   select(-filename) |>
-#   mutate(filename = paste0(
-#     "ordinal_onlyglmmtmb_",condition,"_",seed,".rds"))
-  
-# #glmmtmb linear fits only 
-# dat_nest2 <- nest_rds_files(params2, "filename", DIR)
-
-# dat_nest3 <- readRDS("~/Documents/Github/MastersThesis/iccs/data/fullsets/ordinal_Uthree5_AOV.rds")
 ```
 
 # Universe 4 erros 
@@ -329,24 +331,13 @@ Here, I  unnested the entire simulation sets to obtain the full data
 #| code-fold: true
 
 dat <- dat_nest |> unnest(result)
-# dat2 <- dat_nest2 |> unnest(result) #only linear *not generalized* glmmsTMB fits
-# dat3 <- dat_nest3 |> unnest(result) #only fixed AOV fits (J.G. fix)
+
 
 # Delete nested object
 rm(dat_nest) # no longer neaded 
-# rm(dat_nest2) #no longer needed
-# rm(dat_nest3) #no longer needed
 
 ```
 
-Need to replace the AOV fits in `dat` with `dat3` (thanks to J.G. Fix)
-```{r}
-# dat <- dat |> 
-#   filter(method != "aov_icc") |>
-#   bind_rows(dat3) #dat3 only contains fixed "aov_icc"
-
-# rm(dat3) # no longer needed
-```
 
 Critically, datasets were subsetted so that each g_icc() is matched with its corresponding data generating variance (DGP) hyper-parameters
 
@@ -547,8 +538,8 @@ mismatches
 Replace simulation icc estimates with corrected icc estimates (see troubleshooting above), and set factors
 ```{r}
 # #clean up 
-# rm(dat_full2)
-# rm(mismatches)
+rm(dat_full2)
+rm(mismatches)
 
 # fix ICCs 
 # dat_full <- dat_full |>
@@ -656,8 +647,8 @@ dplot <- left_join(errors, negative_summary) |>
       style = "solid"
     ),
     locations = cells_body(columns = c("percent_error", "negative_pct"))
-    ) #|> 
-      # gtsave("all_descriptives_ordinal_full.png")
+    ) |> 
+       gtsave("~/Documents/GitHub/MastersThesis/iccs/all_plots/universe4_ordinal/all_descriptives_ordinal_full.png")
 
 dplot
 ```
@@ -696,7 +687,10 @@ bias <- dat_full |>
 Plot Percent Bias Boxplots to go in Thesis
 
 ```{r}
-factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category") 
+bias <- bias |> 
+  mutate(`All Included` = "All Factors") #showing over all factors
+
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "k_category", "e_category", "All Included") 
 
 # FIX: Added '~' before the function call so R evaluates '.x' loop by loop
 mm_boxplots <- map(set_names(factors_to_test), ~ {
@@ -707,30 +701,263 @@ mm_boxplots <- map(set_names(factors_to_test), ~ {
 })
 
 mm_boxplots
+
+mm_boxplots2 <- lapply(seq_along(mm_boxplots), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(mm_boxplots[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      mm_boxplots[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+
+# bias_mcse <- map(set_names(factors_to_test), ~ {
+#  table_mcse(
+#     data = bias, 
+#     x_factor = .x
+#   )
+# })
+
+# bias_mcse_max <- map_dbl(bias_mcse, ~ round(max(.x$avg_mcse, na.rm = TRUE), 5)) |>
+#   enframe(name = "Factor", value = "MCSE (Maximum)") |>
+#   gt()
+
+# table_panel <- wrap_elements(bias_mcse_max)
+
+
+# all_elements <- c(mm_boxplots2, list(table_panel))
+
+
+# combined_bias <- wrap_plots(all_elements, ncol =2, nrow =3) + 
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom") &
+#   coord_cartesian(ylim = c(-0.50, 0.15))
+
+combined_bias <- wrap_plots(mm_boxplots2, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") &
+  coord_cartesian(ylim = c(-.50, 0.15))
+
+
+# 2. Save as a full US Letter page (Portrait)
+ggsave(
+  filename = "all_boxplot_bias.pdf", 
+  plot = combined_bias, 
+  width = 8.5, 
+  height = 11, 
+  units = "in"
+)
+
+```
+
+table of values from boxplots
+
+```{r}
+bias_table <- function(data) {
+  
+  # 1. Aggregate the raw replicates down to your exact simulation design cells
+  summarized_data <- data %>%
+    group_by(n_raters, n_objects, target_icc, k_category, e_category) %>%
+    summarise(
+      Bias = median(bias2, na.rm = TRUE),
+      MCSE = sqrt(mean(bias2_mcse^2)),
+      .groups = "drop"
+    ) %>%
+    # Format and combine to 5 decimal precision
+    mutate(
+      Cell_Value = paste0(sprintf("%.5f", Bias), "\n(", sprintf("%.5f", MCSE), ")")
+    ) %>%
+    select(n_raters, n_objects, target_icc, k_category, e_category, Cell_Value)
+  
+  # 2. Pivot the categories out wide to create the horizontal matrix nested structure
+  # This creates columns named like: "K1_E1", "K1_E2", "K2_E1", etc.
+  wide_data <- summarized_data %>%
+    pivot_wider(
+      names_from = c(k_category, e_category),
+      names_sep = "_sep_",
+      values_from = Cell_Value
+    ) %>%
+    # Ensure the 27 rows are cleanly sorted
+    arrange(n_raters, n_objects, target_icc)
+  
+  # 3. Identify and sort the wide column names to map the gt spanners accurately
+  wide_cols <- grep("_sep_", colnames(wide_data), value = TRUE)
+  
+  # Extract the unique levels of your wide factors to loop through for spanners
+  k_levels <- unique(summarized_data$k_category)
+  
+  # 4. Initialize the gt table object
+  gt_table <- wide_data %>%
+    gt() %>%
+    tab_header(
+      title = "Simulation Performance Metrics",
+      subtitle = "Rows: Main Factors (27 Combinations) | Columns: Category Hierarchies"
+    ) %>%
+    # Clean up the left-hand row identifier names
+    cols_label(
+      n_raters = "N Raters",
+      n_objects = "N Objects",
+      target_icc = "Target ICC"
+    )
+  
+  # 5. Programmatically clean column text and add the multi-level nested spanners
+  for (k in k_levels) {
+    # Find all columns belonging to the current k_category level
+    k_cols <- grep(paste0("^", k, "_sep_"), wide_cols, value = TRUE)
+    
+    gt_table <- gt_table %>%
+      # Group those sub-columns underneath a giant K-category spanning header
+      tab_spanner(
+        label = paste("K-Cat:", k),
+        columns = all_of(k_cols)
+      )
+  }
+
+  # Clean ALL the wide column labels at once by stripping the "K_sep_" prefix
+  gt_table <- gt_table %>%
+    cols_label_with(
+      columns = all_of(wide_cols),
+      fn = function(x) {
+        # This removes everything up to and including "_sep_"
+        # Leaving just the clean E-category value (e.g., "E1", "E2")
+        sub(".*_sep_", "", x)
+      }
+    )
+  
+  # 6. Apply professional aesthetics optimized for small grid display panels
+  gt_table <- gt_table %>%
+    cols_align(align = "center", columns = everything()) # %>%
+    # tab_options(
+    #   table.font.size = 8,
+    #   heading.title.font.size = 11,
+    #   heading.subtitle.font.size = 9,
+    #   column_labels.font.size = 9,
+    #   data_row.padding = px(2),
+    #   row.striping = TRUE,
+    #   table.width = pct(100)
+    # )
+  
+  # 7. Convert to a patchwork canvas asset
+  #return(wrap_elements(gt::as_gtable(gt_table)))
+}
+
+
+bias_table <- function(data) {
+  
+  # 1. Aggregate and format the raw replicates, ensuring 'icc' is included
+  summarized_data <- data %>%
+    group_by(n_raters, n_objects, target_icc, icc, k_category, e_category) %>%
+    summarise(
+      Bias = median(bias2, na.rm = TRUE),
+      MCSE = sqrt(mean(bias2_mcse^2)),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      Cell_Value = paste0(sprintf("%.5f", Bias), "\n(", sprintf("%.5f", MCSE), ")")
+    ) %>%
+    select(n_raters, n_objects, target_icc, icc, k_category, e_category, Cell_Value)
+  
+  # 2. Pivot the categories out wide
+  wide_data <- summarized_data %>%
+    pivot_wider(
+      names_from = c(k_category, e_category),
+      names_sep = "_sep_",
+      values_from = Cell_Value
+    ) %>%
+    arrange(n_raters, n_objects, target_icc, icc)
+  
+  wide_cols <- grep("_sep_", colnames(wide_data), value = TRUE)
+  k_levels <- unique(summarized_data$k_category)
+  
+  # 3. Construct the base gt table
+  gt_table <- wide_data %>%
+    gt() %>%
+    tab_header(
+      title = "Simulation Performance Metrics",
+      subtitle = "Color-coded by ICC Levels"
+    ) %>%
+    cols_label(
+      n_raters = "N Raters",
+      n_objects = "N Objects",
+      target_icc = "Target ICC",
+      icc = "ICC"
+    )
+  
+  # 4. COLOR ACCENT: Map 4 distinct palette colors to the 4 levels of 'icc'
+  gt_table <- gt_table %>%
+    data_color(
+      columns = icc,
+      palette = c("#E6F2F7", "#FDF2E9", "#EAF2F1", "#F5EEF8"), # Blue, Orange, Mint, Purple
+      method = "auto"
+    )
+  
+  # 5. Add the multi-level nested spanners
+  for (k in k_levels) {
+    k_cols <- grep(paste0("^", k, "_sep_"), wide_cols, value = TRUE)
+    gt_table <- gt_table %>%
+      tab_spanner(
+        label = paste("K-Cat:", k),
+        columns = all_of(k_cols)
+      )
+  }
+
+  # 6. Clean up the wide column labels
+  gt_table <- gt_table %>%
+    cols_label_with(
+      columns = all_of(wide_cols),
+      fn = function(x) sub(".*_sep_", "", x)
+    )
+  
+  # 7. Apply layout options
+  gt_table <- gt_table %>%
+    cols_align(align = "center", columns = everything()) %>%
+    tab_options(
+      table.font.size = 8,
+      heading.title.font.size = 11,
+      heading.subtitle.font.size = 9,
+      column_labels.font.size = 9,
+      data_row.padding = px(2),
+    #  table.width = pct(100)
+    )
+  
+  #return(wrap_elements(gt::as_gtable(gt_table)))
+}
+ het <- bias_table(bias)
 ```
 
 ```{r}
 # output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/boxplots_plots/ordinal/PercentBias/faceted/"
 
+output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/universe4_ordinal/"
+
 # Create the directory if it doesn't exist
-# if (!dir.exists(output_dir)) dir.create(output_dir)
+if (!dir.exists(output_dir)) dir.create(output_dir)
 
-# # Walk through the list by its names to save each plot
-# walk(names(mm_boxplots), ~ {
-#   #this_data <- .x$data
+# Walk through the list by its names to save each plot
+walk(names(mm_boxplots), ~ {
+  #this_data <- .x$data
 
-#  # icc_dir <- as.character(unique(this_data$icc))
-#   #icc_p <- as.character(unique(this_data$p))
-#   file_path <- file.path(output_dir, paste0("boxplot_over_", .x, ".png"))
+ # icc_dir <- as.character(unique(this_data$icc))
+  #icc_p <- as.character(unique(this_data$p))
+  file_path <- file.path(output_dir, paste0("boxplotbias_over_", .x, ".png"))
   
-#   ggsave(
-#     filename = file_path, 
-#     plot = mm_boxplots[[.x]], 
-#     width = 12, 
-#     height = 8, 
-#     dpi = 300
-#   )
-# })
+  ggsave(
+    filename = file_path, 
+    plot = mm_boxplots[[.x]], 
+    width = 12, 
+    height = 8, 
+    dpi = 300
+  )
+})
 ```
 
 # 7. CI and coverage rates
@@ -814,8 +1041,8 @@ cplot <- CI_summary |>
       style = "solid"
     ),
     locations = cells_body(columns = c("percent_error"))
-    ) #|> 
-      # gtsave("all_coverage_ordinal_full.png")
+    ) |> 
+       gtsave("~/Documents/GitHub/MastersThesis/iccs/all_plots/universe4_ordinal/all_coverage_ordinal_full.png")
 ```
 
 
@@ -864,7 +1091,8 @@ cvrge_boxplots
 
 save coverage boxplots
 ```{r}
- output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/boxplots_plots/ordinal/Coverage/"
+#  output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/boxplots_plots/ordinal/Coverage/"
+output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/universe4_ordinal/"
 
 # Create the directory if it doesn't exist
 if (!dir.exists(output_dir)) dir.create(output_dir)
@@ -938,7 +1166,7 @@ cor_plots <- map(set_names(factors_to_analyze), ~ {
 cor_plots
 
 # Save 
-output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/caa_correlations/"
+output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/universe4_ordinal/"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 iwalk(cor_plots, function(p, factor_name) {
