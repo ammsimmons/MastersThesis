@@ -55,7 +55,8 @@ iter <- 1000
 # filt_param <- params |> filter(condition %notin% file_numbers)
 
 
-param2 <- readRDS("~/MastersThesis/iccs/data/U4_binary_rerun2.rds") 
+param2 <- readRDS("~/MastersThesis/iccs/data/U4_binary_rerun2.rds") |>
+  filter(condition == 17 | condition == 21) 
 
 
 
