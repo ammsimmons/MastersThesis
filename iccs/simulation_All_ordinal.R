@@ -47,7 +47,7 @@ iter <- 100
 # params_comp1 <- param |>
 #  filter(condition <= 2) # for fast server 1 
 
-param <- readRDS("~/Documents/Github/MastersThesis/iccs/data/U4_ordinal_rerun.rds") |>
+param <- readRDS("~/MastersThesis/iccs/data/U4_ordinal_rerun.rds") |>
   select(!c(result))
 
 #params_comp2 <- param |> 
