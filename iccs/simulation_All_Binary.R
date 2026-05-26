@@ -55,13 +55,13 @@ iter <- 1000
 # filt_param <- params |> filter(condition %notin% file_numbers)
 
 
-param <- readRDS("~/Documents/Github/MastersThesis/iccs/data/U4_binary_rerun.rds")
+param2 <- readRDS("~/MastersThesis/iccs/data/U4_binary_rerun2.rds") 
 
 
 
 tictoc::tic()
 future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_all_binary(param, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_binary(param2, iter, writeFiles=TRUE)
 tictoc::toc()
 
