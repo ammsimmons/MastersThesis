@@ -304,10 +304,31 @@ rerun these slices
 - post J.G. pull requests #1 and #2 new analyses
 
 ```{r}
-dat_nest1 <- dat_nest[1:16,]
-dat_nest2 <- dat_nest[31:216,]
+# dat_nest1 <- dat_nest[1:16,]
+# dat_nest2 <- dat_nest[31:216,]
 
-dat_nest <- bind_rows(dat_nest1,dat_nest2)
+dat_tracked <- dat_nest |>
+  mutate(
+    # Count the rows inside each nested tibble (returns 0 if NULL)
+    nested_rows = map_int(result, ~ if (is.null(.x)) 0L else nrow(.x)),
+    
+    # Flag rows that don't meet your structural criteria
+    is_bad_run = nested_rows != 18000
+  )
+
+# 1. Isolate the clean data for your analysis
+dat_nest <- dat_tracked |> 
+  filter(!is_bad_run) |> 
+  select(!c(nested_rows, is_bad_run))
+
+
+# 2. Isolate the incomplete runs to see what went wrong
+dat_rerun <- dat_tracked |> 
+  filter(is_bad_run) |>
+  select(!c(nested_rows, is_bad_run, result))
+
+#dat_nest <- bind_rows(dat_nest1,dat_nest2)
+rm(dat_tracked)
 ```
 
 

@@ -37,12 +37,12 @@ iter <- 1000
 #     SEED = 02112026 + 17 * 1:n() #set seed for each row 
 #   )
 
-params <- expand_grid( !!!design_factors) |>
-    mutate(
-    seed = 03022026 + 17 * 1:n(), #set seed for each row
-    condition = 1:n() * 1,
-    filename = paste0("iccs/data/universe_4/binary_Ufour_",condition,"_",seed,".rds")
-  )
+# params <- expand_grid( !!!design_factors) |>
+#     mutate(
+#     seed = 03022026 + 17 * 1:n(), #set seed for each row
+#     condition = 1:n() * 1,
+#     filename = paste0("iccs/data/universe_4/binary_Ufour_",condition,"_",seed,".rds")
+#   )
 
 # # Find errored conditions and rerun 
 # # 1. List all .rds files in the directory
@@ -55,12 +55,13 @@ params <- expand_grid( !!!design_factors) |>
 # filt_param <- params |> filter(condition %notin% file_numbers)
 
 
-# #index SEED
-# SEED <- params$SEED 
+param <- readRDS("~/Documents/Github/MastersThesis/iccs/data/U4_binary_rerun.rds")
+
+
 
 tictoc::tic()
 future::plan(multisession, workers = 22)
 #future::plan(sequential)
-sim_results <- vardel::run_all_binary(params, iter, writeFiles=TRUE)
+sim_results <- vardel::run_all_binary(param, iter, writeFiles=TRUE)
 tictoc::toc()
 
