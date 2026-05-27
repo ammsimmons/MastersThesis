@@ -31,7 +31,7 @@ target_icc = c(0.40,0.60,0.80),
 k_category = c(3,5,7),
 e_category = c(TRUE,FALSE), # 1 = equal category prevalence, #0 = unequal linear decay prevalence 
 icc_type = c(1,2,3,4)) 
-iter <- 100
+iter <- 1000
 
 
 # param <- expand_grid( !!!design_factors) |>
@@ -47,8 +47,7 @@ iter <- 100
 # params_comp1 <- param |>
 #  filter(condition <= 2) # for fast server 1 
 
-param <- readRDS("~/MastersThesis/iccs/data/U4_ordinal_rerun.rds") |>
-  select(!c(result))
+param <- readRDS("~/MastersThesis/iccs/data/U4_ordinal_rerun2.rds") 
 
 #params_comp2 <- param |> 
  # filter(condition <= 82) # for fast server 1 
