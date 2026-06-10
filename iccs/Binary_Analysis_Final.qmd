@@ -79,8 +79,91 @@ nest_rds_files <- function(data_df, filename_col, directory_path) {
 Plot functions
 
 ```{r}
+
 # plot boxplots with MCSEs
-plot_revised_boxplots <- function(data, x_factor) {
+plot_revised_boxplots2 <- function(data, x_factor, filt_icc, y_var = "bias2", mcse_var = "bias2_mcse") {
+
+  # 1. Dictionary for Clean Labels
+  clean_label <- function(var_name) {
+    case_when(
+      var_name == "n_raters"   ~ "Number of Raters",
+      var_name == "n_objects"  ~ "Number of Objects",
+      var_name == "target_icc" ~ "Target ICC Value",
+      var_name == "k_category" ~ "Number of Categories (K)",
+      var_name == "e_category" ~ "Equality of Categories",
+      var_name == "bias2"      ~ "Percent Bias",
+      var_name == "bias"       ~ "Bias",
+      var_name == "rmse"       ~ "RMSE",
+      TRUE                     ~ var_name
+    )
+  }
+
+  # 2. Filter input dataset by target ICCs
+  plot_df <- data |>
+    filter(icc %in% filt_icc)
+
+  # 3. Dynamic Monte Carlo Standard Error Aggregation Layer
+  mcse_bounds <- plot_df |>
+    group_by(.data[[x_factor]], Method, icc) |>
+    summarize(
+      # Evaluates the dynamic midpoint (e.g., median of bias, bias2, or rmse)
+      mid_point = median(.data[[y_var]]), 
+      # Evaluates the dynamic root-mean-square MCSE corresponding column
+      avg_mcse  = sqrt(mean(.data[[mcse_var]]^2)), 
+      .groups = "drop"
+    )
+  
+  fixed_dodge <- position_dodge(width = 0.75)
+
+  # 4. Plot Layering Build
+  ggplot(plot_df) +
+    # Layer 1: Background MCSE Lineranges tracking dynamic midpoints
+    geom_linerange(
+      data = mcse_bounds,
+      aes(
+        x = factor(.data[[x_factor]]), 
+        ymin = mid_point - avg_mcse, 
+        ymax = mid_point + avg_mcse,
+        group = Method
+      ),
+      color = "purple", 
+      linewidth = 4, 
+      position = fixed_dodge, 
+      alpha = 1
+    ) +
+    # Layer 2: Dynamic Boxplots
+    geom_boxplot(
+      aes(x = factor(.data[[x_factor]]), y = .data[[y_var]], fill = Method), 
+      outliers = TRUE, 
+      outlier.size = 0.5, 
+      alpha = 0.7, 
+      outlier.shape = NA,
+      position = fixed_dodge
+    ) +
+    facet_wrap(vars(icc)) +
+    labs(
+      x = clean_label(x_factor), 
+      y = clean_label(y_var),
+      fill = "Method"
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom") + 
+    # Reference guide rails
+    geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
+    # Dynamic Annotation Banner text
+    annotate(
+      "label", 
+      x = Inf, y = Inf, 
+      label = paste0("Max MCSE (", clean_label(y_var), "): ", 
+                     round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 5)),
+      vjust = 1.5, hjust = 1.0, 
+      fill = "white", alpha = 0.8, size = 3, fontface = "italic"
+    ) 
+}
+
+
+# plot boxplots with MCSEs
+plot_revised_boxplots <- function(data, x_factor, filt_icc) {
 
    clean_label <- function(var_name) {
     case_when(
@@ -90,9 +173,14 @@ plot_revised_boxplots <- function(data, x_factor) {
       var_name == "k_category" ~ "Number of Categories (K)",
       var_name == "e_category" ~ "Equality of Categories",
       var_name == "bias2"      ~ "Percent Bias",
+      var_name == "bias"   ~ "Bias",
+      var_name == "rmse" ~ "Root Mean Square Error",
       TRUE                     ~ var_name
     )
    }
+
+   data <- data |>
+    filter(icc %in% filt_icc)
 
    # add monte carlo standard error layer
   mcse_bounds <- data |>
@@ -124,7 +212,7 @@ plot_revised_boxplots <- function(data, x_factor) {
   alpha = 0.7, outlier.shape = NA,
   position = fixed_dodge
   ) +
-  facet_wrap(vars(icc), labeller = label_both) +
+  facet_wrap(vars(icc)) +
     labs(
       #title = "Bias Analysis (Ordinal)",
       # Dynamically evaluate the clean label based on the specific loop iteration
@@ -135,7 +223,7 @@ plot_revised_boxplots <- function(data, x_factor) {
     theme_bw() +
     theme(legend.position = "bottom") + 
     geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
-    geom_hline(yintercept = -0.10, color = "black", linetype = "dashed") +
+    geom_hline(yintercept = -0.10, color = "red", linetype = "dashed") +
      geom_hline(yintercept = 0.10, color = "red", linetype = "dashed") +
     annotate(
     "label", 
@@ -146,7 +234,7 @@ plot_revised_boxplots <- function(data, x_factor) {
   ) 
 }
 
-plot_coverage_boxplots <- function(data, x_factor) {
+plot_coverage_boxplots <- function(data, x_factor, filt_icc) {
 
    clean_label <- function(var_name) {
     case_when(
@@ -161,6 +249,10 @@ plot_coverage_boxplots <- function(data, x_factor) {
       TRUE                     ~ var_name
     )
    }
+
+
+   data <- data |>
+    filter(icc %in% filt_icc)
 
    # add monte carlo standard error layer
   mcse_bounds <- data |>
@@ -192,7 +284,8 @@ plot_coverage_boxplots <- function(data, x_factor) {
   alpha = 0.7, outlier.shape = NA,
   position = fixed_dodge
   ) +
-  facet_wrap(vars(icc), labeller = label_both) +
+  coord_cartesian(ylim = c(0.50, 1.05)) +
+  facet_wrap(vars(icc)) +
     labs(
       #title = "Bias Analysis (Binary)",
       # Dynamically evaluate the clean label based on the specific loop iteration
@@ -202,8 +295,8 @@ plot_coverage_boxplots <- function(data, x_factor) {
     ) +
     theme_bw() +
     theme(legend.position = "bottom") + 
-   # geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
-    geom_hline(yintercept = 0.95, color = "black", linetype = "dashed") +
+    geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
+    geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
     #geom_hline(yintercept = 0.10, color = "red", linetype = "dashed") +
     annotate(
     "label", 
@@ -257,7 +350,7 @@ plot_multi_facet_correlation <- function(data,
     geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
     stat_cor(aes(label = ..r.label..), method = "pearson", size = 3) +
     labs(
-      title = paste("Correlation Analysis:", get_label(caa_metric), "vs", get_label(icc_metric)),
+      title = paste(get_label(icc_metric), "vs", get_label(caa_metric)),
       # subtitle = paste("Faceted by", get_label(row_factor), "and", get_label(col_factor)),
       subtitle = paste("Faceted by ICC Data Generating Process"),
       x = paste("Average", get_label(caa_metric)),
@@ -595,7 +688,7 @@ errors <- dat_full |>
   mutate(method = fct_recode(method, 
   #"LMM {lme4}" = "icc",
   "LMM {glmmtmb}" = "icc",
-  "GLMM {ordinal}" = "g_icc", 
+  "GLMM {glmmtmb}" = "g_icc", 
   "ANOVA {stats}" = "aov_icc", 
   ))
 
@@ -619,7 +712,7 @@ negative_summary <- dat_full |>
   mutate(method = fct_recode(method, 
   #"LMM {lme4}" = "icc",
   "LMM {glmmtmb}" = "icc",
-  "GLMM {ordinal}" = "g_icc", 
+  "GLMM {glmmtmb}" = "g_icc", 
   "ANOVA {stats}" = "aov_icc", 
   ))
 
@@ -666,8 +759,8 @@ dplot <- left_join(errors, negative_summary) |>
       style = "solid"
     ),
     locations = cells_body(columns = c("percent_error", "negative_pct"))
-    ) #|> 
-    #    gtsave("all_descriptives_binary_full.png")
+    ) |> 
+       gtsave("all_descriptives_binary_full.png")
 
 dplot
 ```
@@ -706,17 +799,349 @@ bias <- dat_full |>
 Plot Percent Bias Boxplots to go in Thesis
 
 ```{r}
-factors_to_test <- c("n_raters", "n_objects", "target_icc", "p") 
 
-# FIX: Added '~' before the function call so R evaluates '.x' loop by loop
-mm_boxplots <- map(set_names(factors_to_test), ~ {
+bias <- bias |> 
+  mutate(`All Included` = "All Factors")
+
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "p", "All Included") 
+
+# Agreement ICCs
+mm_boxplots_agreement <- map(set_names(factors_to_test), ~ {
   plot_revised_boxplots(
     data = bias, 
-    x_factor = .x
+    x_factor = .x,
+    filt_icc = c("ICC(A,1)", "ICC(A,k)")
   )
 })
 
-mm_boxplots
+mm_boxplots_agreement
+
+# Consistency
+mm_boxplots_consist <- map(set_names(factors_to_test), ~ {
+  plot_revised_boxplots(
+    data = bias, 
+    x_factor = .x,
+    filt_icc = c("ICC(C,1)", "ICC(C,k)")
+  )
+})
+
+mm_boxplots_consist
+```
+
+```{r}
+library(patchwork)
+#AGREEMENT
+mm_boxplots2_agreement <- lapply(seq_along(mm_boxplots_agreement), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(mm_boxplots_agreement[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      mm_boxplots_agreement[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_bias_agreement <- wrap_plots(mm_boxplots2_agreement, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") &
+  coord_cartesian(ylim = c(-.50, 0.15)) & 
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")" )
+
+
+#CONSISTENCY
+
+#### BIAS BOXPLOTS CONSISTENCY
+
+
+mm_boxplots2_consist <- lapply(seq_along(mm_boxplots_consist), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(mm_boxplots_consist[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      mm_boxplots_consist[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_bias_consist <- wrap_plots(mm_boxplots2_consist, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") &
+  coord_cartesian(ylim = c(-.50, 0.15)) &
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")" )
+
+
+
+# # 2. Save as a full US Letter page (Portrait)
+# ggsave(
+#   filename = "all_boxplot_bias_agreement.pdf", 
+#   plot = combined_bias_agreement, 
+#   width = 8.5, 
+#   height = 11, 
+#   units = "in"
+# )
+
+# ggsave(
+#   filename = "all_boxplot_bias_consist.pdf", 
+#   plot = combined_bias_consist, 
+#   width = 8.5, 
+#   height = 11, 
+#   units = "in"
+# )
+
+
+```
+
+Bias plots to go into supplementals 
+
+```{r}
+
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "p", "All Included") 
+
+# Agreement ICCs
+bm_boxplots_agreement <- map(set_names(factors_to_test), ~ {
+  plot_revised_boxplots2(
+    data = bias, 
+    x_factor = .x,
+    filt_icc = c("ICC(A,1)", "ICC(A,k)"),
+    y_var = "bias",
+    mcse_var = "bias_mcse"
+  )
+})
+
+bm_boxplots_agreement
+
+# Consistency
+bm_boxplots_consist <- map(set_names(factors_to_test), ~ {
+  plot_revised_boxplots2(
+    data = bias,
+    x_factor = .x,
+    filt_icc = c("ICC(C,1)", "ICC(C,k)"),
+    y_var = "bias",
+    mcse_var = "bias_mcse"
+  )
+})
+
+bm_boxplots_consist
+```
+
+```{r}
+library(patchwork)
+#AGREEMENT
+bm_boxplots2_agreement <- lapply(seq_along(bm_boxplots_agreement), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(bm_boxplots_agreement[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      bm_boxplots_agreement[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_bm_agreement <- wrap_plots(bm_boxplots2_agreement, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") &
+  coord_cartesian(ylim = c(-.50, 0.15)) & 
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")" )
+
+
+#CONSISTENCY
+
+#### BIAS BOXPLOTS CONSISTENCY
+
+
+bm_boxplots2_consist <- lapply(seq_along(bm_boxplots_consist), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(bm_boxplots_consist[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      bm_boxplots_consist[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_bm_consist <- wrap_plots(bm_boxplots2_consist, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") &
+  coord_cartesian(ylim = c(-.50, 0.15)) &
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")" )
+
+
+
+# # 2. Save as a full US Letter page (Portrait)
+ggsave(
+  filename = "all_boxplot_bm_agreement.pdf", 
+  plot = combined_bm_agreement, 
+  width = 8.5, 
+  height = 11, 
+  units = "in"
+)
+
+ggsave(
+  filename = "all_boxplot_bm_consist.pdf", 
+  plot = combined_bm_consist, 
+  width = 8.5, 
+  height = 11, 
+  units = "in"
+)
+
+
+```
+
+RMSE plots to go into supplements 
+
+
+```{r}
+
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "p", "All Included") 
+
+# Agreement ICCs
+rmse_boxplots_agreement <- map(set_names(factors_to_test), ~ {
+  plot_revised_boxplots2(
+    data = bias, 
+    x_factor = .x,
+    filt_icc = c("ICC(A,1)", "ICC(A,k)"),
+    y_var = "rmse",
+    mcse_var = "rmse_mcse"
+  )
+})
+
+rmse_boxplots_agreement
+
+# Consistency
+rmse_boxplots_consist <- map(set_names(factors_to_test), ~ {
+  plot_revised_boxplots2(
+    data = bias,
+    x_factor = .x,
+    filt_icc = c("ICC(C,1)", "ICC(C,k)"),
+    y_var = "rmse",
+    mcse_var = "rmse_mcse"
+  )
+})
+
+rmse_boxplots_consist
+```
+
+```{r}
+library(patchwork)
+#AGREEMENT
+rmse_boxplots2_agreement <- lapply(seq_along(rmse_boxplots_agreement), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(rmse_boxplots_agreement[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      rmse_boxplots_agreement[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_rmse_agreement <- wrap_plots(rmse_boxplots2_agreement, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") &
+  coord_cartesian(ylim = c(-.10, 0.50)) & 
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")" )
+
+
+#CONSISTENCY
+
+#### BIAS BOXPLOTS CONSISTENCY
+
+
+rmse_boxplots2_consist <- lapply(seq_along(rmse_boxplots_consist), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(rmse_boxplots_consist[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      rmse_boxplots_consist[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_rmse_consist <- wrap_plots(rmse_boxplots2_consist, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") &
+  coord_cartesian(ylim = c(-.10, 0.50)) &
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")" )
+
+
+
+# # 2. Save as a full US Letter page (Portrait)
+ggsave(
+  filename = "all_boxplot_rmse_agreement.pdf", 
+  plot = combined_rmse_agreement, 
+  width = 8.5, 
+  height = 11, 
+  units = "in"
+)
+
+ggsave(
+  filename = "all_boxplot_rmse_consist.pdf", 
+  plot = combined_rmse_consist, 
+  width = 8.5, 
+  height = 11, 
+  units = "in"
+)
+
+
 ```
 
 ```{r}
@@ -750,18 +1175,6 @@ descriptives for CIs
 
 ```{r}
 
-testCI<- function(estimate, ci_lower, ci_upper) {
-  # DO NOT ROUND, and use less PARENTHESES 
-  # Parentheses is equivalent to the original {varde} icc formulations
-
- # icc_type_dgp <- as.character(icc_type_dgp)
-  case_when(
-    estimate <= ci_lower | estimate >= ci_upper ~ FALSE, 
-    estimate >= ci_lower & estimate <= ci_upper ~ TRUE,
-    TRUE                    ~ NA_real_                      
-  )
-}
-
 CI_summary <- dat_full |>
   # mutate(
   #   across(.cols = c("message","warning","error"), .fns = as.logical)) |> 
@@ -783,7 +1196,7 @@ CI_summary <- dat_full |>
   mutate(method = fct_recode(method, 
   #"LMM {lme4}" = "icc",
   "LMM {glmmtmb}" = "icc",
-  "GLMM {ordinal}" = "g_icc", 
+  "GLMM {glmmtmb}" = "g_icc", 
   "ANOVA {stats}" = "aov_icc", 
   ))
 ```
@@ -791,7 +1204,7 @@ CI_summary <- dat_full |>
 ```{r}
 cplot <- CI_summary |>
   gt() |>
-  my_gt_theme() |> 
+  my_gt_theme() |>
   #apa guidlines say do the titles in word
   # tab_header(
   #   title = "Simulation Failure and Negative ICC Rates (Ordinal Data)",
@@ -824,9 +1237,9 @@ cplot <- CI_summary |>
       weight = px(1),
       style = "solid"
     ),
-    locations = cells_body(columns = c("percent_error"))
-    ) #|> 
-      # gtsave("all_coverage_binary_full.png")
+    locations = cells_body(columns = c("invalid_trials","percent_error"))
+    ) |>
+   gtsave("all_coverage_binary_full.png")
 ```
 
 
@@ -855,19 +1268,126 @@ coverage <- dat_full |>
 
 
 ```{r}
-factors_to_test <- c("n_raters", "n_objects", "target_icc", "p") 
+coverage <- coverage |>
+  mutate(`All Included` = "All Factors")
 
-# FIX: Added '~' before the function call so R evaluates '.x' loop by loop
-cvrge_boxplots <- map(set_names(factors_to_test), ~ {
+factors_to_test <- c("n_raters", "n_objects", "target_icc", "p", "All Included") 
+
+### AGREEEMENT 
+cvrge_boxplots_agreement <- map(set_names(factors_to_test), ~ {
   plot_coverage_boxplots(
     data = coverage, 
-    x_factor = .x
+    x_factor = .x,
+    filt_icc = c("ICC(A,1)", "ICC(A,k)")
   )
 })
 
-cvrge_boxplots
+cvrge_boxplots_agreement
+
+### CONSISTENCY
+
+cvrge_boxplots_consist <- map(set_names(factors_to_test), ~ {
+  plot_coverage_boxplots(
+    data = coverage, 
+    x_factor = .x,
+    filt_icc = c("ICC(C,1)", "ICC(C,k)")
+  )
+})
+
+cvrge_boxplots_consist
+
 
 ```
+
+combined coverage plot 
+
+```{r}
+library(patchwork)
+cvrge_boxplots2_agreement <- lapply(seq_along(cvrge_boxplots_agreement), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(cvrge_boxplots_agreement[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      cvrge_boxplots_agreement[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_coverage_agreement <- wrap_plots(cvrge_boxplots2_agreement, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") #&
+ # coord_cartesian(ylim = c(.50, 1)) #& 
+ # geom_boxplot(width = 0.3)
+
+
+# 2. Save as a full US Letter page (Portrait)
+ggsave(
+  filename = "all_boxplot_coverage_agreement.pdf", 
+  plot = combined_coverage_agreement, 
+  width = 8.5, 
+  height = 11, 
+  units = "in"
+)
+
+cvrge_boxplots2_consist <- lapply(seq_along(cvrge_boxplots_consist), function(i) {
+  if (i %in% c(1,3,5)) {
+    # Keep the first plot exactly as it is
+    return(cvrge_boxplots_consist[[i]])
+  } else {
+    # For all subsequent plots, remove the Y-axis title, text, and ticks
+    return(
+      cvrge_boxplots_consist[[i]] + 
+        theme(
+          axis.title.y = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.ticks.y = element_blank()
+        )
+    )
+  }
+})
+
+combined_coverage_consist <- wrap_plots(cvrge_boxplots2_consist, ncol = 2, nrow=3 ) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom")# &
+ # coord_cartesian(ylim = c(.50, 1)) #& 
+ # geom_boxplot(width = 0.3)
+
+
+# 2. Save as a full US Letter page (Portrait)
+ggsave(
+  filename = "all_boxplot_coverage_consist.pdf", 
+  plot = combined_coverage_consist, 
+  width = 8.5, 
+  height = 11, 
+  units = "in"
+)
+```
+
+
+```{r}
+# factors_to_test <- c("n_raters", "n_objects", "target_icc", "p") 
+
+# # FIX: Added '~' before the function call so R evaluates '.x' loop by loop
+# cvrge_boxplots <- map(set_names(factors_to_test), ~ {
+#   plot_coverage_boxplots(
+#     data = coverage, 
+#     x_factor = .x
+#   )
+# })
+
+# cvrge_boxplots
+
+```
+
+
+
 
 save coverage boxplots
 ```{r}
@@ -946,13 +1466,33 @@ cor_plots <- map(set_names(factors_to_analyze), ~ {
 cor_plots
 
 #Save 
-output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/caa_correlations/"
+output_dir <- "~/Documents/GitHub/MastersThesis/iccs/all_plots/universe4_binary/"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 iwalk(cor_plots, function(p, factor_name) {
   ggsave(
     file.path(output_dir, paste0("binary_gicc_corr_", factor_name, ".png")), 
-    plot = p, width = 16, height = 12, dpi = 300
+    plot = p, width = 5.33, height = 4, dpi = 300
   )
 })
+```
+
+Correlation stats 
+```{r}
+
+df_cor_a1 <- dat_a1c1 |>
+  filter(icc_type == "ICC(A,1)") |>
+  filter(method %in% c("kappa_adj", "g_icc")) |>
+  pivot_wider(id_cols = condition, names_from = method, values_from = mean_estimate) |>
+  drop_na(kappa_adj,g_icc)
+
+df_cor_c1 <- dat_a1c1 |>
+  filter(icc_type == "ICC(C,1)") |>
+  filter(method %in% c("kappa_adj", "g_icc")) |>
+  pivot_wider(id_cols = condition, names_from = method, values_from = mean_estimate) |>
+  drop_na(kappa_adj,g_icc)
+
+corr_a1 <- cor.test(df_cor_a1$kappa_adj, df_cor_a1$g_icc)
+corr_c1 <- cor.test(df_cor_c1$kappa_adj, df_cor_c1$g_icc)
+
 ```

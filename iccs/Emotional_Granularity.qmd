@@ -1,0 +1,155 @@
+---
+title: "Emotional Granularity IRR"
+author: Simmons & Girard
+date: May 29, 2026
+theme: flatly
+format:
+  html:
+    embed-resources: true
+---
+
+# Setup
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(simhelpers)
+library(gt)
+library(paletteer)
+library(ggpubr)
+library(gtExtras)
+library(vardel)
+```
+
+# Load data 
+
+```{r}
+dat <- read_csv("~/Documents/Github/MastersThesis/iccs/data/fullsets/IRR_Emotional_Granularity.csv")
+
+```
+
+# Data Wrangling
+
+```{r}
+dat2 <- dat |>
+  select(-1) |> # Drop the first column
+  mutate(PPID= 1:n()) |> # Change PPID to numbers
+  rename(RaterID = PPID) |> #rename
+  pivot_longer(
+    cols = 2:273,  #everything except the first column
+    names_to = "ObjectID", 
+    values_to = "Score"
+    ) |> 
+    separate_wider_delim(
+        cols = "ObjectID",
+        delim = "_",
+        names = c("EmotionID", "ImageID")
+    )
+
+dat2
+```
+
+
+# ICCs for Emotions
+```{r}
+dat_emotions <- dat2 |>
+    select(-ImageID) |>
+    rename(ObjectID = EmotionID) # rename to work with functions in {vardel}
+dat_emotions
+
+
+```
+
+## Using the ANOVA framework
+```{r}
+aov_iccs_emotion <- calc_aov_icc(dat_emotions)
+aov_iccs_emotion
+
+```
+
+## Using the G-ICC framework 
+```{r}
+g_ICC_ordinal_emotion <- calc_g_ordinal_icc(dat_emotions)
+g_ICC_ordinal_emotion
+```
+
+## Summary for Emotions
+It appears that each rater rates according to their emotions very reliabiliy, given ICC(A,K) and ICC(C,K) are very high. 
+
+However, note that, overall, g-ICCs are lower and we would prescribe their use since simulations show they are less biased. 
+
+However, you would need to utilize an average ratings ICC, given a low single rating ICC means that using one rater is not representative of all raters. Note that these ratings are high probably because k number of raters is 101
+
+<b> In other words, highly reliable, very idiosynatic emotional granularity? </b>
+
+# What if we switch Emotions as Raters and Raters as objects? 
+
+
+```{r}
+dat_switch_emotions<- dat2 |>
+    select(-ImageID) |>
+    mutate(Rater2 = RaterID) |>
+    select(-RaterID) |>
+    rename(RaterID = EmotionID) |> # rename to work with functions in {vardel}
+    mutate(ObjectID = Rater2) |>
+    select(-Rater2)
+
+dat_switch_emotions
+```
+
+
+## Using the ANOVA framework
+```{r}
+aov_switch_emotion <- calc_aov_icc(dat_switch_emotions)
+aov_switch_emotion
+
+```
+
+## Using the G-ICC framework 
+```{r}
+g_ICC_switch_emotion <- calc_g_ordinal_icc(dat_switch_emotions)
+g_ICC_switch_emotion
+```
+
+## Summary for Swtiching Emotions for Raters
+The idea I had was, by simply switching emotions as raters, we are measuring the reliabilty for different emotions to have be rated the same by any person. Note that these ratings are high probably because k number of "raters" is only 16, and "objects" is 101. 
+
+The results are very different across the ANOVA and G-ICC framework:
+
+What we find is, if we use the G-ICC framework, categorically different emotional labels are not reliably for these images, according to in terms ICC(A,1) and ICC(A,k), rated in these images the same across different raters?
+
+
+ 
+# ICCs for Images
+Even though images weren't rated, or in this case categorized, outside of emotions, we can consider the ICCs of images. 
+
+```{r}
+dat_images <- dat2 |>
+    select(-EmotionID) |>
+    filter(ImageID != "P") |> 
+    mutate(ImageID = str_replace(ImageID, fixed("."), "_"))  |>
+    rename(ObjectID = ImageID) # rename to work with functions in {vardel}
+
+dat_images
+```
+
+## Using the ANOVA framework
+```{r}
+aov_iccs_images <- calc_aov_icc(dat_images)
+aov_iccs_images 
+
+```
+
+## Using the G-ICC Framework
+
+```{r}
+g_ICC_ordinal_images <- calc_g_ordinal_icc(dat_images)
+g_ICC_ordinal_images
+```
+
+## Summary for images 
+It appears that each rater rates images very reliabiliy, given ICC(A,K) and ICC(C,K) are fairly high. 
+
+However, note that, overall, g-ICCs are lower and we would prescribe their use since simulations show they are less biased. 
+
+However, you would need to utilize an average ratings ICC, given a low single rating ICC means that using one rater is not representative of all raters in terms, <b>especially since raters are not rating, or categorizing, images outside of emotions.</b>
+ 
