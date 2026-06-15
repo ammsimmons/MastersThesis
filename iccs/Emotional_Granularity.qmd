@@ -1,6 +1,6 @@
 ---
 title: "Emotional Granularity IRR"
-author: Simmons & Girard
+author: Hoemann, Simmons, & Girard
 date: May 29, 2026
 theme: flatly
 format:
@@ -18,6 +18,7 @@ library(paletteer)
 library(ggpubr)
 library(gtExtras)
 library(vardel)
+library(purrr)
 ```
 
 # Load data 
@@ -48,108 +49,246 @@ dat2 <- dat |>
 dat2
 ```
 
+# Analysis 
+Need to obtain ICC per rater, such that for each rater
+- 'rater' = emotion
+- 'object' = image id
 
-# ICCs for Emotions
-```{r}
-dat_emotions <- dat2 |>
-    select(-ImageID) |>
-    rename(ObjectID = EmotionID) # rename to work with functions in {vardel}
-dat_emotions
+## Using the AOV framework
+```{r, warning = FALSE, message = FALSE}
 
-
+emotions_aov <- dat2 %>%
+    filter(ImageID != "P") |> # don't use practice items |>
+    rename(ObjectID = ImageID) %>% # rename to work with functions in {vardel}
+    rename(Participants = RaterID) %>% # rename to work with functions in {vardel}
+    rename(RaterID = EmotionID) %>% # rename to work with functions in {vardel}
+    group_by(Participants) %>%
+    group_modify(~ calc_aov_icc(.x))
+emotions_aov
 ```
 
-## Using the ANOVA framework
-```{r}
-aov_iccs_emotion <- calc_aov_icc(dat_emotions)
-aov_iccs_emotion
+## Using the g_ICC framework
+```{r, warning = FALSE, message = FALSE}
+emotions_gicc <- dat2 %>%
+    filter(ImageID != "P") |> # don't use practice items |>
+    rename(ObjectID = ImageID) %>% # rename to work with functions in {vardel}
+    rename(Participants = RaterID) %>% # rename to work with functions in {vardel}
+    rename(RaterID = EmotionID) %>% # rename to work with functions in {vardel}
+    group_by(Participants) %>%
+    group_modify(~ calc_g_ordinal_icc(.x))
 
-```
-
-## Using the G-ICC framework 
-```{r}
-g_ICC_ordinal_emotion <- calc_g_ordinal_icc(dat_emotions)
-g_ICC_ordinal_emotion
-```
-
-## Summary for Emotions
-It appears that each rater rates according to their emotions very reliabiliy, given ICC(A,K) and ICC(C,K) are very high. 
-
-However, note that, overall, g-ICCs are lower and we would prescribe their use since simulations show they are less biased. 
-
-However, you would need to utilize an average ratings ICC, given a low single rating ICC means that using one rater is not representative of all raters. Note that these ratings are high probably because k number of raters is 101
-
-<b> In other words, highly reliable, very idiosynatic emotional granularity? </b>
-
-# What if we switch Emotions as Raters and Raters as objects? 
-
-
-```{r}
-dat_switch_emotions<- dat2 |>
-    select(-ImageID) |>
-    mutate(Rater2 = RaterID) |>
-    select(-RaterID) |>
-    rename(RaterID = EmotionID) |> # rename to work with functions in {vardel}
-    mutate(ObjectID = Rater2) |>
-    select(-Rater2)
-
-dat_switch_emotions
+emotions_gicc
 ```
 
 
-## Using the ANOVA framework
+
+# Comparing Frameworks
+
+First combine all the results 
+
 ```{r}
-aov_switch_emotion <- calc_aov_icc(dat_switch_emotions)
-aov_switch_emotion
+emotions_full <- bind_rows(emotions_aov, emotions_gicc)
+emotions_full$method <- as.factor(emotions_full$method)
+```
+
+Compare via boxplots
+```{r}
+ggplot(emotions_full, aes(x = method, y = estimate, fill = method)) +
+  geom_boxplot(outlier.alpha = 0.5) +
+  theme_bw() + 
+  facet_wrap(~ icc, scales = "free_x") + 
+  coord_cartesian(ylim = c(-.20, 1)) + 
+  geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) +
+  labs(
+    title = "Distribution of ICCs Across Participants",
+    x = "Rater ID",
+    y = "ICCs"
+  ) +
+  theme(
+   # axis.text.x = element_text(angle = 45, hjust = 1, size = 8), 
+    legend.position = "none" 
+  )
+```
+
+# Negative ICCs
+We see negative ICCs in ANOVA framework
+
+```{r}
+negative_iccs <- emotions_full |> 
+    filter(estimate< 0)
+filt_participants <- unique(negative_iccs$Participants)
+```
+
+These same participants do not have negative ICCs in the g-ICC framework 
+
+```{r}
+emotions_full |> 
+    filter(Participants %in% filt_participants) |>
+    select(Participants,method,icc,estimate) |>
+    print(n=56)
+```
+
+## Rank Comparisons 
+
+### Rank-Rank Scatter plot
+-   Shows us where each participant is ranked by one method to the other method. 
+-   The 45 degree line is one-to-one mapping between methods 
+
+```{r}
+wide_emotions_full <- emotions_full |> 
+    group_by(method, icc) |> 
+    mutate(Rank = rank(estimate)) |>
+    ungroup() |>
+    select(Participants, method, icc, Rank) |> 
+    pivot_wider(
+        names_from = method, 
+        values_from = Rank, 
+        names_prefix = "Rank_"
+    )
+wide_emotions_full 
+```
+<b> Note that the larger ranks have the highest ICC value within method and icc type </b>
+
+Plotting 
+```{r}
+method_names <- colnames(wide_emotions_full)[3:4]
+
+ggplot(wide_emotions_full, 
+aes(
+    x = .data[[method_names[1]]], 
+    y = .data[[method_names[2]]], 
+    color = icc)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  # The 45-degree reference line: perfect rank agreement sits exactly on this line
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey50", size = 0.8) +
+  facet_wrap(~ icc) +
+  #scale_x_reverse() + # Optional: Puts Rank 1 at the top/left instead of the bottom
+  #scale_y_reverse() + 
+  theme_bw() +
+  labs(
+    title = "Rank Agreement Between Calculation Methods",
+    subtitle = "Points far from the dashed line indicate major shifts in rater ranking",
+    x = paste("Rater Rank (", gsub("Rank_", "", method_names[1]), ")", sep=""),
+    y = paste("Rater Rank (", gsub("Rank_", "", method_names[2]), ")", sep=""),
+    color = "ICC Level"
+  ) + 
+    theme(
+        legend.position = "none" 
+    )
 
 ```
 
-## Using the G-ICC framework 
-```{r}
-g_ICC_switch_emotion <- calc_g_ordinal_icc(dat_switch_emotions)
-g_ICC_switch_emotion
-```
+<b> We can conclude that the two methods greatly changed participant ranks </b>
+I think this is to be expected, given that the g_icc is less biased. 
+For example, some participants obtained negative ICC values in the ANOVA framework, whereas the no participant obtained a negative ICC value in the g_icc framework. 
 
-## Summary for Swtiching Emotions for Raters
-The idea I had was, by simply switching emotions as raters, we are measuring the reliabilty for different emotions to have be rated the same by any person. Note that these ratings are high probably because k number of "raters" is only 16, and "objects" is 101. 
-
-The results are very different across the ANOVA and G-ICC framework:
-
-What we find is, if we use the G-ICC framework, categorically different emotional labels are not reliably for these images, according to in terms ICC(A,1) and ICC(A,k), rated in these images the same across different raters?
-
-
- 
-# ICCs for Images
-Even though images weren't rated, or in this case categorized, outside of emotions, we can consider the ICCs of images. 
+### Bland-Altman Plot (Tukey mean-difference plot)
+This shows us the differences in rank for each participant
 
 ```{r}
-dat_images <- dat2 |>
-    select(-EmotionID) |>
-    filter(ImageID != "P") |> 
-    mutate(ImageID = str_replace(ImageID, fixed("."), "_"))  |>
-    rename(ObjectID = ImageID) # rename to work with functions in {vardel}
-
-dat_images
+rank_cols <- colnames(wide_emotions_full)[3:4]
+ba_data <- wide_emotions_full %>%
+  mutate(
+    Rank_Mean = (.data[[rank_cols[1]]] + .data[[rank_cols[2]]]) / 2,
+    Rank_Diff = .data[[rank_cols[1]]] - .data[[rank_cols[2]]]
+  )
+ba_data
 ```
 
-## Using the ANOVA framework
+Plotting 
 ```{r}
-aov_iccs_images <- calc_aov_icc(dat_images)
-aov_iccs_images 
+# Calculate overall bias and Limits of Agreement (LoA)
+bias <- mean(ba_data$Rank_Diff, na.rm = TRUE)
+sd_diff <- sd(ba_data$Rank_Diff, na.rm = TRUE)
+upper_loa <- bias + (1.96 * sd_diff)
+lower_loa <- bias - (1.96 * sd_diff)
 
+# Create the Bland-Altman Plot faceted by ICC
+ggplot(ba_data, aes(x = Rank_Mean, y = Rank_Diff, color = icc)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  facet_wrap(~ icc) + 
+  
+  # Horizontal line at 0 (Perfect Agreement)
+  geom_hline(yintercept = 0, linetype = "solid", color = "grey30") +
+  
+  # Mean Bias Line
+  geom_hline(yintercept = bias, linetype = "dashed", color = "blue", size = 0.8) +
+  
+  # Upper and Lower Limits of Agreement
+  geom_hline(yintercept = upper_loa, linetype = "dotted", color = "red", size = 0.8) +
+  geom_hline(yintercept = lower_loa, linetype = "dotted", color = "red", size = 0.8) +
+  
+  facet_wrap(~ icc) +
+  theme_minimal() +
+  labs(
+    title = "Bland-Altman Plot of Participant Rankings",
+    subtitle = "Dotted red lines represent the 95% Limits of Agreement",
+    x = "Average of the Two Ranks",
+    y = "Difference Between the Two Ranks (Method 1 - Method 2)",
+    color = "ICC Level"
+  ) +
+    theme(
+        legend.position = "none" 
+    )
 ```
+Due to the diamond-shape of the clouds, we can conclude the following: 
 
-## Using the G-ICC Framework
+    - The participants who have the highest ICC/rank in one method, also have the highest ICC/rank in other other method. 
+    - The participants who have the lowest ICC/rank in one method, also have the lowest ICC/rank in the other method
+    - The partcipants who had middling ICCs/rank in one method, often get re-ranked in the other method. 
+
+We can pin-point which participants had the largest rank-differnces relative to their rank-mean across methods
 
 ```{r}
-g_ICC_ordinal_images <- calc_g_ordinal_icc(dat_images)
-g_ICC_ordinal_images
+ba_data |>
+    filter(Rank_Diff > upper_loa | Rank_Diff < lower_loa) 
 ```
 
-## Summary for images 
-It appears that each rater rates images very reliabiliy, given ICC(A,K) and ICC(C,K) are fairly high. 
 
-However, note that, overall, g-ICCs are lower and we would prescribe their use since simulations show they are less biased. 
+### Counter-factual Bland-Altman plot 
+To confirm, let's consider a counter-factual Bland-Altman plot if both `aov_icc` and `g_icc` had the same rankings (using the same plot code). 
 
-However, you would need to utilize an average ratings ICC, given a low single rating ICC means that using one rater is not representative of all raters in terms, <b>especially since raters are not rating, or categorizing, images outside of emotions.</b>
- 
+```{r}
+ba_data_counterfactual <- ba_data |>
+    group_by(icc) |> 
+    mutate(Rank_aov_icc = 1:n(),
+    Rank_g_icc = 1:n()) |> 
+  mutate(
+    Rank_Mean = (.data[[rank_cols[1]]] + .data[[rank_cols[2]]]) / 2,
+    Rank_Diff = .data[[rank_cols[1]]] - .data[[rank_cols[2]]]
+  )
+
+  # Calculate overall bias and Limits of Agreement (LoA)
+bias <- mean(ba_data_counterfactual$Rank_Diff, na.rm = TRUE)
+sd_diff <- sd(ba_data_counterfactual$Rank_Diff, na.rm = TRUE)
+upper_loa <- bias + (1.96 * sd_diff)
+lower_loa <- bias - (1.96 * sd_diff)
+
+# Create the Bland-Altman Plot faceted by ICC
+ggplot(ba_data_counterfactual, aes(x = Rank_Mean, y = Rank_Diff, color = icc)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  facet_wrap(~ icc) + 
+  
+  # Horizontal line at 0 (Perfect Agreement)
+  geom_hline(yintercept = 0, linetype = "solid", color = "grey30") +
+  
+  # Mean Bias Line
+  geom_hline(yintercept = bias, linetype = "dashed", color = "blue", size = 0.8) +
+  
+  # Upper and Lower Limits of Agreement
+  geom_hline(yintercept = upper_loa, linetype = "dotted", color = "red", size = 0.8) +
+  geom_hline(yintercept = lower_loa, linetype = "dotted", color = "red", size = 0.8) +
+  
+  facet_wrap(~ icc) +
+  theme_minimal() +
+  labs(
+    title = "Counterfactual Bland-Altman Plot of Participant Rankings",
+    subtitle = "Dotted red lines represent the 95% Limits of Agreement",
+    x = "Average of the Two Ranks",
+    y = "Difference Between the Two Ranks (Method 1 - Method 2)",
+    color = "ICC Level"
+  ) +
+    theme(
+        legend.position = "none" 
+    )
+```
