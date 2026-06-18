@@ -184,35 +184,39 @@ plot_revised_boxplots <- function(data, x_factor, filt_icc) {
     filter(icc %in% filt_icc)
 
    # add monte carlo standard error layer
-  mcse_bounds <- data |>
+  mcse_bound <- data |>
     group_by(.data[[x_factor]], Method, icc) |>
     summarize(
       mid_point = median(bias2), 
       avg_mcse = sqrt(mean(bias2_mcse^2)), 
-      .groups = "drop")
+      .groups = "drop") |> 
+    mutate(
+      ymin = mid_point - avg_mcse,
+      ymax = mid_point + avg_mcse
+    )
   
   fixed_dodge <- position_dodge(width = 0.75)
 
   # FIX: Use .data[[x_factor]] to process the incoming string name safely
    #layer the MCSE bars first
-  ggplot(data) +
+  ggplot(data, aes(x = factor(.data[[x_factor]]), 
+  y = bias2, fill = Method)) +
     # Layer 1: Background MCSE Bars (Shows the execution/sampling noise layer)
-  geom_linerange(
-      data = mcse_bounds,
-      aes(
-        x = factor(.data[[x_factor]]), 
-        ymin = mid_point - avg_mcse, 
-        ymax = mid_point + avg_mcse,
-        group = Method
-      ),
-      color = "purple", linewidth = 4, position = fixed_dodge, 
-      alpha = 1) +
-  geom_boxplot(aes(x = factor(.data[[x_factor]]), 
-  y = bias2, fill = Method), 
+  geom_boxplot(
+  #   aes(x = factor(.data[[x_factor]]), 
+  # y = bias2, fill = Method), 
   outliers = TRUE, outlier.size = 0.5, 
   alpha = 0.7, outlier.shape = NA,
   position = fixed_dodge
   ) +
+    geom_linerange(
+      data = mcse_bound,
+      aes(y = NULL, ymin = ymin, ymax = ymax),
+      color = "white",
+      linewidth = 1,
+     # alpha =0.5,
+      position = fixed_dodge
+    ) +
   facet_wrap(vars(icc), scales = "free_y") +
     labs(
       #title = "Bias Analysis (Ordinal)",
@@ -225,14 +229,14 @@ plot_revised_boxplots <- function(data, x_factor, filt_icc) {
     theme(legend.position = "bottom") + 
     geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
     geom_hline(yintercept = -0.10, color = "red", linetype = "dashed") +
-     geom_hline(yintercept = 0.10, color = "red", linetype = "dashed") + 
-    annotate(
-    "label", 
-    x = Inf, y = -Inf, # Places it precisely in the top-right corner
-    label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 4)),
-    vjust = -0.5, hjust = 1.1, 
-    fill = "white", alpha = 0.8, size = 3, fontface = "italic"
-  ) 
+     geom_hline(yintercept = 0.10, color = "red", linetype = "dashed")  
+    # annotate(
+    # "label", 
+    # x = Inf, y = -Inf, # Places it precisely in the top-right corner
+    # label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 4)),
+    # vjust = -0.5, hjust = 1.1, 
+    # fill = "white", alpha = 0.8, size = 3, fontface = "italic"
+  #) 
 }
 
 plot_coverage_boxplots <- function(data, x_factor, filt_icc) {
@@ -256,35 +260,37 @@ plot_coverage_boxplots <- function(data, x_factor, filt_icc) {
     filter(icc %in% filt_icc)
 
    # add monte carlo standard error layer
-  mcse_bounds <- data |>
+  mcse_bound <- data |>
     group_by(.data[[x_factor]], Method, icc) |>
     summarize(
       mid_point = median(coverage), 
       avg_mcse = sqrt(mean(coverage_mcse^2)), 
-      .groups = "drop")
+      .groups = "drop") |> 
+    mutate(
+      ymin = mid_point - avg_mcse,
+      ymax = mid_point + avg_mcse
+    )
   
   fixed_dodge <- position_dodge(width = 0.75)
 
   # FIX: Use .data[[x_factor]] to process the incoming string name safely
    #layer the MCSE bars first
-  ggplot(data) +
+  ggplot(data, aes(x = factor(.data[[x_factor]]), 
+  y = coverage, fill = Method)) +
     # Layer 1: Background MCSE Bars (Shows the execution/sampling noise layer)
-  geom_linerange(
-      data = mcse_bounds,
-      aes(
-        x = factor(.data[[x_factor]]), 
-        ymin = mid_point - avg_mcse, 
-        ymax = mid_point + avg_mcse,
-        group = Method
-      ),
-      color = "purple", linewidth = 4, position = fixed_dodge, 
-      alpha = 1) +
-  geom_boxplot(aes(x = factor(.data[[x_factor]]), 
-  y = coverage, fill = Method), 
+  geom_boxplot( 
   outliers = TRUE, outlier.size = 0.5, 
   alpha = 0.7, outlier.shape = NA,
   position = fixed_dodge
   ) +
+    geom_linerange(
+      data = mcse_bound,
+      aes(y = NULL, ymin = ymin, ymax = ymax),
+      color = "white",
+      linewidth = 1,
+     # alpha =0.5,
+      position = fixed_dodge
+    )  +
   #coord_cartesian(ylim = c(0.50, 1.05)) +
   facet_wrap(vars(icc), scales = "free_y") +
     labs(
@@ -297,15 +303,15 @@ plot_coverage_boxplots <- function(data, x_factor, filt_icc) {
     theme_bw() +
     theme(legend.position = "bottom") + 
     geom_hline(yintercept = 0, color = "lemonchiffon4", linetype = "dashed", linewidth = 0.5) + 
-    geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") 
     #geom_hline(yintercept = 0.10, color = "red", linetype = "dashed") +
-    annotate(
-    "label", 
-    x = Inf, y = -Inf, # Places it precisely in the top-right corner
-    label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 4)),
-    vjust = -0.5, hjust = 1.1, 
-    fill = "white", alpha = 0.8, size = 3, fontface = "italic"
-  ) 
+  #   annotate(
+  #   "label", 
+  #   x = Inf, y = -Inf, # Places it precisely in the top-right corner
+  #   label = paste0("Max % MCSE: ", round(max(mcse_bounds$avg_mcse, na.rm = TRUE), 4)),
+  #   vjust = -0.5, hjust = 1.1, 
+  #   fill = "white", alpha = 0.8, size = 3, fontface = "italic"
+  # ) 
 }
 
 plot_multi_facet_correlation <- function(data, 
@@ -899,16 +905,18 @@ ggsave(
   filename = "all_boxplot_bias_agreement.pdf", 
   plot = combined_bias_agreement, 
   width = 8.5, 
-  height = 11, 
-  units = "in"
+  height = 8, 
+  units = "in",
+  dpi = 300
 )
 
 ggsave(
   filename = "all_boxplot_bias_consist.pdf", 
   plot = combined_bias_consist, 
   width = 8.5, 
-  height = 11, 
-  units = "in"
+  height = 8, 
+  units = "in",
+  dpi = 300
 )
 
 
@@ -1342,8 +1350,9 @@ ggsave(
   filename = "all_boxplot_coverage_agreement.pdf", 
   plot = combined_coverage_agreement, 
   width = 8.5, 
-  height = 11, 
-  units = "in"
+  height = 8, 
+  units = "in",
+  dpi = 300
 )
 
 cvrge_boxplots2_consist <- lapply(seq_along(cvrge_boxplots_consist), function(i) {
@@ -1379,8 +1388,9 @@ ggsave(
   filename = "all_boxplot_coverage_consist.pdf", 
   plot = combined_coverage_consist, 
   width = 8.5, 
-  height = 11, 
-  units = "in"
+  height = 8, 
+  units = "in",
+  dpi = 300
 )
 ```
 
